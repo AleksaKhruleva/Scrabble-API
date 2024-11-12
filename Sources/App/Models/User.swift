@@ -1,7 +1,7 @@
 import Fluent
 import Vapor
 
-final class User: Model, @unchecked Sendable {
+final class User: Model, Content, @unchecked Sendable {
     static let schema = Schema.users.rawValue
     
     @ID(key: .id)
