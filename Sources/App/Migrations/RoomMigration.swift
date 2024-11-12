@@ -8,9 +8,10 @@ struct RoomMigration: AsyncMigration {
     func prepare(on database: any FluentKit.Database) async throws {
         try await database.schema(schema)
             .id()
-            .unique(on: "invite_code") //("invite_code", .string)
+            .field("invite_code", .string)
             .field("is_private", .string)
             .field("admin_id", .uuid)
+            .unique(on: "invite_code")
             .create()
     }
     

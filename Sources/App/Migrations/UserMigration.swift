@@ -14,6 +14,7 @@ struct UserMigration: AsyncMigration {
             .field("email", .string)
             .field("password", .string)
             .field("room_id", .uuid)
+            .unique(on: "email")
             .create()
     }
     
