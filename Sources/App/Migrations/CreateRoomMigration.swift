@@ -9,8 +9,8 @@ struct CreateRoomMigration: AsyncMigration {
         try await database.schema(schema)
             .id()
             .field("invite_code", .string)
-            .field("is_private", .string)
-            .field("admin_id", .uuid)
+            .field("is_private", .bool, .required)
+            .field("admin_id", .uuid, .required, .references("users", "id", onDelete: .cascade))
             .unique(on: "invite_code")
             .create()
     }
