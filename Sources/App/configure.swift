@@ -18,9 +18,10 @@ public func configure(_ app: Application) async throws {
     ), as: .psql)
 
     // MARK: - Setup migrations
-    app.migrations.add(RoomMigration())
-    app.migrations.add(UserMigration())
-    app.migrations.add(TokenMigration())
+    app.migrations.add(CreateUserMigration())
+    app.migrations.add(CreateRoomMigration())
+    app.migrations.add(CreateTokenMigration())
+    try await app.autoMigrate().get()
     
     // MARK: - Register routes
     try routes(app)

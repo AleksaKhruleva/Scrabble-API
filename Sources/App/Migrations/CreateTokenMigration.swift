@@ -1,20 +1,15 @@
 import Fluent
 import Vapor
 
-// tupoi xcode topchik👍🏿 👶🏻👼🏻
-
-struct UserMigration: AsyncMigration {
+struct CreateTokenMigration: AsyncMigration {
     
-    let schema = User.schema
+    let schema = Token.schema
     
     func prepare(on database: any FluentKit.Database) async throws {
         try await database.schema(schema)
             .id()
-            .field("username", .string)
-            .field("email", .string)
-            .field("password", .string)
-            .field("room_id", .uuid)
-            .unique(on: "email")
+            .field("value", .string)
+            .field("user_id", .string)
             .create()
     }
     

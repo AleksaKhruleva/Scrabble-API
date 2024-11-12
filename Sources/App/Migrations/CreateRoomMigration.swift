@@ -1,15 +1,17 @@
 import Fluent
 import Vapor
 
-struct TokenMigration: AsyncMigration {
+struct CreateRoomMigration: AsyncMigration {
     
-    let schema = Token.schema
+    let schema = Room.schema
     
     func prepare(on database: any FluentKit.Database) async throws {
         try await database.schema(schema)
             .id()
-            .field("value", .string)
-            .field("user_id", .string)
+            .field("invite_code", .string)
+            .field("is_private", .string)
+            .field("admin_id", .uuid)
+            .unique(on: "invite_code")
             .create()
     }
     
