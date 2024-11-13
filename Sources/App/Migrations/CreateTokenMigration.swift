@@ -9,7 +9,7 @@ struct CreateTokenMigration: AsyncMigration {
         try await database.schema(schema)
             .id()
             .field("value", .string, .required)
-            .field("userID", .uuid, .required, .references("users", "id", onDelete: .cascade))
+            .field("user_id", .uuid, .required, .references("users", "id", onDelete: .cascade))
             .create()
     }
     
