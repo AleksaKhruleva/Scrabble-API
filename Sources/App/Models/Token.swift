@@ -21,3 +21,21 @@ final class Token: Model, Content, @unchecked Sendable {
         self.$user.id = userID
     }
 }
+
+extension Token {
+    static func generate(for user: User) throws -> Token {
+        let random = [UInt8].random(count: 32).base64
+        return try Token(value: random, userID: user.requireID())
+    }
+}
+
+extension Token: ModelTokenAuthenticatable {
+    typealias User = App.User
+    
+    static let valueKey = \Token.$value
+    static let userKey = \Token.$user
+    
+    var isValid: Bool {
+        true
+    }
+}
