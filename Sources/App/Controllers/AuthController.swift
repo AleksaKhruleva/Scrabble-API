@@ -7,7 +7,7 @@ struct AuthController: RouteCollection {
         
         // MARK: - Register route
         // Usage:
-        /// Route: {base-url}/api/v1/auth/register
+        /// Route: POST {base-url}/api/v1/auth/register
         /// Body: { username, email, password }
         // Response:
         /// { user }
@@ -19,7 +19,7 @@ struct AuthController: RouteCollection {
         
         // MARK: - Login route
         // Usage:
-        /// Route: {base-url}/api/v1/auth/login
+        /// Route: POST  {base-url}/api/v1/auth/login
         /// Body: {} empty
         /// AuthType -> Basic Auth ->
         ///   username: {email}
