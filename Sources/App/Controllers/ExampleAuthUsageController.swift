@@ -1,13 +1,15 @@
 import Vapor
 import Fluent
 
-struct UseAuthController: RouteCollection {
+struct ExampleAuthUsageController: RouteCollection {
     
     func boot(routes: RoutesBuilder) throws {
         let uses = routes.grouped("api", "v1", "test")
                 
         // MARK: - Non-protected routes
         uses.get(use: index)
+        // Usage:
+        /// Route: {base-url}/api/v1/test/{user-id}
         uses.get(":id", use: getUser)
         
         // MARK: - Middleware
