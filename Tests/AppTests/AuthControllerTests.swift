@@ -75,4 +75,20 @@ struct AuthControllerTests {
             })
         }
     }
+    
+    @Test("User Login with invalid password")
+    func test_login_withInvalidPassword_shouldReturnError() async throws {
+        let user = User(username: "testuser", email: "test@example.com", password: try Bcrypt.hash("password123"))
+
+        try await withApp { app in
+            try await user.save(on: app.db)
+
+            try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
+                let basicAuth = BasicAuthorization(username: "test@example.com", password: "InvalidPassword")
+                req.headers.basicAuthorization = basicAuth
+            }, afterResponse: { res async throws in
+                #expect(res.status == .unauthorized)
+            })
+        }
+    }
 }
