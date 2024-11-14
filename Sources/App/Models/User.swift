@@ -2,6 +2,7 @@ import Fluent
 import Vapor
 
 final class User: Model, Content, @unchecked Sendable {
+    
     static let schema = Schema.users.rawValue
     
     @ID(key: .id)
@@ -16,17 +17,13 @@ final class User: Model, Content, @unchecked Sendable {
     @Field(key: "password")
     var password: String
     
-    @OptionalParent(key: "room_id")
-    var room: Room?
-    
     init() { }
     
-    init(id: UUID? = nil, username: String, email: String, password: String, roomID: UUID? = nil) {
+    init(id: UUID? = nil, username: String, email: String, password: String) {
         self.id = id
         self.username = username
         self.email = email
         self.password = password
-        self.$room.id = roomID
     }
     
     final class Public: Content {
