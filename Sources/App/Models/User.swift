@@ -21,11 +21,12 @@ final class User: Model, Content, @unchecked Sendable {
     
     init() { }
     
-    init(id: UUID? = nil, username: String, email: String, password: String) {
+    init(id: UUID? = nil, username: String, email: String, password: String, roomID: UUID? = nil) {
         self.id = id
         self.username = username
         self.email = email
         self.password = password
+        self.$room.id = roomID
     }
     
     final class Public: Content {
@@ -44,5 +45,14 @@ final class User: Model, Content, @unchecked Sendable {
 extension User {
     func convertToPublic() -> User.Public {
         return User.Public(id: id, username: username, email: email)
+    }
+}
+
+extension User: ModelAuthenticatable {
+    static let usernameKey = \User.$email
+    static let passwordHashKey = \User.$password
+    
+    func verify(password: String) throws -> Bool {
+        try Bcrypt.verify(password, created: self.password)
     }
 }

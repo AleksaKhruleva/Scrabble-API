@@ -8,8 +8,8 @@ struct CreateTokenMigration: AsyncMigration {
     func prepare(on database: any FluentKit.Database) async throws {
         try await database.schema(schema)
             .id()
-            .field("value", .string)
-            .field("user_id", .string)
+            .field("value", .string, .required)
+            .field("user_id", .uuid, .required, .references("users", "id", onDelete: .cascade))
             .create()
     }
     

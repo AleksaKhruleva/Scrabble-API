@@ -18,8 +18,8 @@ public func configure(_ app: Application) async throws {
     ), as: .psql)
 
     // MARK: - Setup migrations
-    app.migrations.add(CreateUserMigration())
     app.migrations.add(CreateRoomMigration())
+    app.migrations.add(CreateUserMigration())
     app.migrations.add(CreateTokenMigration())
     try await app.autoMigrate().get()
     
