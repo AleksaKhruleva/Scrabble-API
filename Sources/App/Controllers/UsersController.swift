@@ -35,16 +35,16 @@ struct UsersController: RouteCollection {
         guard let tokenValue = req.headers.bearerAuthorization?.token else {
             throw Abort(.unauthorized, reason: "Missing or invalid token.")
         }
-
+        
         guard let token = try await Token.query(on: req.db)
             .filter("value", .equal, tokenValue)
             .first() else {
-                throw Abort(.unauthorized, reason: "Invalid or expired token.")
-            }
+            throw Abort(.unauthorized, reason: "Invalid or expired token.")
+        }
         
         let user = try req.content.decode(UpdateUserDTO.self)
-        let userId = token.$user.id
-        guard let updatedUser = try await User.find(userId, on: req.db) else {
+        let userID = token.$user.id
+        guard let updatedUser = try await User.find(userID, on: req.db) else {
             throw Abort(.badRequest, reason: "User not found")
         }
         

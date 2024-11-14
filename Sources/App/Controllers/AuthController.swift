@@ -36,7 +36,7 @@ struct AuthController: RouteCollection {
     @Sendable
     func register(_ req: Request) async throws -> User.Public {
         let registringUser = try req.content.decode(RegisterUserDTO.self)
-
+        
         let user = User(
             username: registringUser.username,
             email: registringUser.email,
