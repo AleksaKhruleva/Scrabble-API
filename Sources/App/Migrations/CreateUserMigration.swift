@@ -10,10 +10,11 @@ struct CreateUserMigration: AsyncMigration {
     func prepare(on database: any FluentKit.Database) async throws {
         try await database.schema(schema)
             .id()
+        
             .field("username", .string, .required)
             .field("email", .string, .required)
             .field("password", .string, .required)
-            .field("room_id", .uuid, .references("rooms", "id"))
+        
             .unique(on: "email")
             .create()
     }
