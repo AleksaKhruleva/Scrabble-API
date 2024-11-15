@@ -32,18 +32,11 @@ struct UsersController: RouteCollection {
     
     @Sendable
     func update(req: Request) async throws -> User.Public {
-        guard let tokenValue = req.headers.bearerAuthorization?.token else {
-            throw Abort(.unauthorized, reason: "Missing or invalid token.")
-        }
-        
-        guard let token = try await Token.query(on: req.db)
-            .filter("value", .equal, tokenValue)
-            .first() else {
-            throw Abort(.unauthorized, reason: "Invalid or expired token.")
-        }
-        
         let user = try req.content.decode(UpdateUserDTO.self)
-        let userID = token.$user.id
+        
+        let userService = UserService(db: req.db)
+        let userID = try await userService.fetchUserID(req: req)
+        
         guard let updatedUser = try await User.find(userID, on: req.db) else {
             throw Abort(.badRequest, reason: "User not found")
         }
