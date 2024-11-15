@@ -17,6 +17,7 @@ public func configure(_ app: Application) async throws {
         tls: .prefer(try .init(configuration: .clientDefault)))
     ), as: .psql)
     
+    // MARK: - Setup Services
     let userService: UserServiceProtocol = UserService(db: app.db)
     app.register(userService)
     

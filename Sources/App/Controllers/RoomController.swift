@@ -65,7 +65,7 @@ extension RoomController {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
-                    try handleError(error)
+                    try ErrorService.shared.handleError(error)
                 }
                 let inviteCode = String(UUID().uuidString.prefix(6).uppercased())
                 room = Room(
