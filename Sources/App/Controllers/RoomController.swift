@@ -65,7 +65,7 @@ extension RoomController {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
-                    try handleError(error)
+                    try ErrorService.shared.handleError(error)
                 }
                 let inviteCode = String(UUID().uuidString.prefix(6).uppercased())
                 room = Room(
@@ -81,7 +81,7 @@ extension RoomController {
                 } catch let error as DatabaseError where error.isConstraintFailure {
                     continue
                 } catch {
-                    try handleError(error)
+                    try ErrorService.shared.handleError(error)
                 }
             }
             return room
@@ -101,7 +101,7 @@ extension RoomController {
                 }
                 return try await joinRoom(randomRoom, with: userID, on: db)
             } catch {
-                try handleError(error)
+                try ErrorService.shared.handleError(error)
                 return nil
             }
         }
@@ -122,7 +122,7 @@ extension RoomController {
                 }
                 return try await joinRoom(specificoom, with: userID, on: db)
             } catch {
-                try handleError(error)
+                try ErrorService.shared.handleError(error)
                 return nil
             }
         }
@@ -180,21 +180,5 @@ extension RoomController {
         }
         let userID = token.$user.id
         return userID
-    }
-}
-
-
-// MARK: - Error Handling
-
-extension RoomController {
-    
-    private func handleError(_ error: Error) throws {
-        if let abortError = error as? Abort {
-            throw Abort(abortError.status, reason: abortError.reason)
-        }
-        if let _ = error as? DatabaseError {
-            throw Abort(.internalServerError, reason: "Database operation failed")
-        }
-        throw Abort(.internalServerError, reason: error.localizedDescription)
     }
 }
