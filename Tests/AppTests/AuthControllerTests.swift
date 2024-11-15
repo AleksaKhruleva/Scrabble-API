@@ -21,7 +21,7 @@ struct AuthControllerTests {
     }
     
     @Test("User Registration")
-    func test_register_withValidData_shouldCreateUser() async throws {
+    func test_register_withValidData_shouldReturnToken() async throws {
         let user = RegisterUserDTO(username: "testuser", email: "test@example.com", password: "password123")
         
         try await withApp { app in
@@ -30,9 +30,8 @@ struct AuthControllerTests {
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
                 
-                let registeredUser = try res.content.decode(User.Public.self)
-                #expect(registeredUser.username == "testuser")
-                #expect(registeredUser.email == "test@example.com")
+                let token = try res.content.decode(Token.self)
+                #expect(token.value != "")
             })
         }
     }
