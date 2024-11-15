@@ -55,9 +55,19 @@ struct AuthController: RouteCollection {
     @Sendable
     func login(_ req: Request) async throws -> Token {
         let user = try req.auth.require(User.self)
+
         let token = try Token.generate(for: user)
+        guard let existingToken = try await Token.query(on: req.db)
+            .filter("user_id", .equal, user.id)
+            .first()
+        else {
+            try await token.save(on: req.db)
+            return token
+        }
         
-        try await token.save(on: req.db)
-        return token
+        existingToken.value = token.value
+        
+        try await existingToken.update(on: req.db)
+        return existingToken
     }
 }
