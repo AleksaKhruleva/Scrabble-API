@@ -3,7 +3,7 @@ import XCTVapor
 import Testing
 import Fluent
 
-@Suite("App Tests with PostgreSQL", .serialized)
+@Suite("AuthController Tests", .serialized)
 struct AuthControllerTests {
     private func withApp(_ test: (Application) async throws -> ()) async throws {
         let app = try await Application.make(.testing)
