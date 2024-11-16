@@ -7,13 +7,13 @@ final class ErrorService: @unchecked Sendable {
     
     private init() {}
     
-    func handleError(_ error: Error) throws {
+    func handleError(_ error: Error) -> Error {
         if let abortError = error as? Abort {
-            throw Abort(abortError.status, reason: abortError.reason)
+            return Abort(abortError.status, reason: abortError.reason)
         }
         if let _ = error as? DatabaseError {
-            throw Abort(.internalServerError, reason: "Database operation failed")
+            return Abort(.internalServerError, reason: "Database operation failed")
         }
-        throw Abort(.internalServerError, reason: error.localizedDescription)
+        return Abort(.internalServerError, reason: error.localizedDescription)
     }
 }
