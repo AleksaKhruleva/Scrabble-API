@@ -79,6 +79,28 @@ struct AuthControllerTests {
         }
     }
     
+    @Test("User Login with Existing Token")
+    func test_login_withExistingToken_shouldUpdateToken() async throws {
+        let user = User(username: "testuser", email: "test@example.com", password: try Bcrypt.hash("password123"))
+        
+        try await withApp { app in
+            try await user.save(on: app.db)
+            
+            let existingToken = Token(value: "old_token", userID: try user.requireID())
+            try await existingToken.save(on: app.db)
+            
+            try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
+                let basicAuth = BasicAuthorization(username: user.email, password: "password123")
+                req.headers.basicAuthorization = basicAuth
+            }, afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                
+                let updatedToken = try res.content.decode(Token.self)
+                #expect(updatedToken.value != existingToken.value)
+            })
+        }
+    }
+    
     @Test("User Login with invalid password")
     func test_login_withInvalidPassword_shouldReturnError() async throws {
         let user = User(username: "testuser", email: "test@example.com", password: try Bcrypt.hash("password123"))
