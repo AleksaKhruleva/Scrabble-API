@@ -8,6 +8,7 @@ struct AuthControllerTests {
     private func withApp(_ test: (Application) async throws -> ()) async throws {
         let app = try await Application.make(.testing)
         do {
+            app.logger.logLevel = .error
             try await configure(app)
             try await app.autoMigrate()
             try await test(app)
