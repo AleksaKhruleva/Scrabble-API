@@ -53,6 +53,9 @@ struct AuthControllerTests {
                 try req.content.encode(registerUser)
             }, afterResponse: { res async throws in
                 #expect(res.status == .internalServerError)
+                
+                let errorResponse = try res.content.decode(ErrorDTO.self)
+                #expect(errorResponse.reason.contains("Database operation failed"))
             })
         }
     }
