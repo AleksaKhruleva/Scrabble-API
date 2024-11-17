@@ -33,6 +33,7 @@ struct RoomController: RouteCollection {
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRandomPublicRoom(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO()
@@ -45,6 +46,7 @@ struct RoomController: RouteCollection {
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRoomByInviteCode(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO()
