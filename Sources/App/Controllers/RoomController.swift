@@ -65,7 +65,7 @@ extension RoomController {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
                 let inviteCode = String(UUID().uuidString.prefix(6).uppercased())
                 room = Room(
@@ -81,7 +81,7 @@ extension RoomController {
                 } catch let error as DatabaseError where error.isConstraintFailure {
                     continue
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
             }
             return room
@@ -101,8 +101,7 @@ extension RoomController {
                 }
                 return try await joinRoom(randomRoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
@@ -122,8 +121,7 @@ extension RoomController {
                 }
                 return try await joinRoom(specificoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
