@@ -34,26 +34,52 @@ struct AuthController: RouteCollection {
     }
     
     @Sendable
-    func register(_ req: Request) async throws -> User.Public {
-        let registringUser = try req.content.decode(RegisterUserDTO.self)
-        
-        let user = User(
-            username: registringUser.username,
-            email: registringUser.email,
-            password: registringUser.password
-        )
-        user.password = try Bcrypt.hash(user.password)
-        
-        try await user.save(on: req.db)
-        return user.convertToPublic()
+    func register(_ req: Request) async throws -> Token {
+        do {
+            let registringUser = try req.content.decode(RegisterUserDTO.self)
+            
+            let user = User(
+                username: registringUser.username,
+                email: registringUser.email,
+                password: registringUser.password
+            )
+            user.password = try Bcrypt.hash(user.password)
+            
+            try await user.save(on: req.db)
+            
+            let token = try Token.generate(for: user)
+            try await token.save(on: req.db)
+            
+            return token
+        } catch {
+            throw ErrorService.shared.handleError(error)
+        }
     }
     
     @Sendable
     func login(_ req: Request) async throws -> Token {
-        let user = try req.auth.require(User.self)
-        let token = try Token.generate(for: user)
-        
-        try await token.save(on: req.db)
-        return token
+        do {
+            let user = try req.auth.require(User.self)
+            
+            let token = try Token.generate(for: user)
+            
+            do {
+                if let existingToken = try await Token.query(on: req.db)
+                    .filter("user_id", .equal, user.id)
+                    .first() {
+                    
+                    existingToken.value = token.value
+                    try await existingToken.update(on: req.db)
+                    return existingToken
+                } else {
+                    try await token.save(on: req.db)
+                    return token
+                }
+            } catch {
+                throw ErrorService.shared.handleError(error)
+            }
+        } catch {
+            throw ErrorService.shared.handleError(error)
+        }
     }
 }
