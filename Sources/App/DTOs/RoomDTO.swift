@@ -6,4 +6,6 @@ struct RoomDTO: Content {
     let isPrivate: Bool
     let adminID: UUID
     let players: [UUID]
+    let timePerTurn: Int
+    let maxPlayers: Int
 }

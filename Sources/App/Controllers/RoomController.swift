@@ -74,7 +74,9 @@ extension RoomController {
                 room = Room(
                     inviteCode: inviteCode,
                     isPrivate: createRoomDTO.isPrivate,
-                    adminID: adminID
+                    adminID: adminID,
+                    timePerTurn: createRoomDTO.timePerTurn,
+                    maxPlayers: createRoomDTO.maxPlayers
                 )
                 do {
                     try await room.save(on: db)
@@ -116,14 +118,14 @@ extension RoomController {
         }
         return try await db.transaction { db in
             do {
-                guard let specificoom = try await Room.query(on: db)
+                guard let specificRoom = try await Room.query(on: db)
                     .filter(\.$inviteCode == inviteCode)
                     .filter(\.$gameStatus == GameStatus.waiting.rawValue)
                     .first()
                 else {
                     throw Abort(.notFound, reason: "Room with the given invite code not found or the game has already started")
                 }
-                return try await joinRoom(specificoom, with: userID, on: db)
+                return try await joinRoom(specificRoom, with: userID, on: db)
             } catch {
                 try ErrorService.shared.handleError(error)
                 return nil
@@ -165,6 +167,11 @@ extension RoomController {
             roomID: try room.requireID(),
             playerID: playerID
         )
-        return try await getRoomWithPlayers(on: db, room: room)
+        let updatedRoom = try await getRoomWithPlayers(on: db, room: room)
+        if updatedRoom.players.count == updatedRoom.maxPlayers {
+            updatedRoom.gameStatus = GameStatus.ready.rawValue
+            try await updatedRoom.update(on: db)
+        }
+        return updatedRoom
     }
 }
