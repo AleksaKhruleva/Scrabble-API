@@ -26,17 +26,29 @@ final class Room: Model, @unchecked Sendable {
     var leaderboard: [String: Int]
     
     @Field(key: "tiles_left")
-    var tilesLeft: Int
+    var tilesLeft: [String: Int]
     
     @Field(key: "board")
     var board: String
+    
+    @Field(key: "turn_order")
+    var turnOrder: [UUID]
+    
+    @Field(key: "current_turn_index")
+    var currentTurnIndex: Int
+    
+    @Field(key: "time_per_turn")
+    var timePerTurn: Int
+    
+    @Field(key: "max_players")
+    var maxPlayers: Int
     
     // MARK: - Player data and related resources
     @Children(for: \.$room)
     var players: [RoomPlayer]
     
-    @Field(key: "player_tiles")
-    var playerTiles: [String: [String]]
+    @Field(key: "players_tiles")
+    var playersTiles: [String: [String]]
     
     @Field(key: "placed_words")
     var placedWords: [String]
@@ -47,7 +59,9 @@ final class Room: Model, @unchecked Sendable {
         id: UUID? = nil,
         inviteCode: String,
         isPrivate: Bool,
-        adminID: UUID
+        adminID: UUID,
+        timePerTurn: Int,
+        maxPlayers: Int
     ) {
         self.id = id
         self.inviteCode = inviteCode
@@ -55,9 +69,13 @@ final class Room: Model, @unchecked Sendable {
         self.$admin.id = adminID
         self.gameStatus = GameStatus.waiting.rawValue
         self.leaderboard = [:]
-        self.tilesLeft = 0
+        self.tilesLeft = [:]
         self.board = ""
-        self.playerTiles = [:]
+        self.turnOrder = []
+        self.currentTurnIndex = 0
+        self.timePerTurn = timePerTurn
+        self.maxPlayers = maxPlayers
+        self.playersTiles = [:]
         self.placedWords = []
     }
 }
@@ -69,7 +87,9 @@ extension Room {
             inviteCode: inviteCode,
             isPrivate: isPrivate,
             adminID: $admin.id,
-            players: players.map { $0.$player.id }
+            players: players.map { $0.$player.id },
+            timePerTurn: timePerTurn,
+            maxPlayers: maxPlayers
         )
     }
 }

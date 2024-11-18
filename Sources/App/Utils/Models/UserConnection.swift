@@ -1,7 +1,7 @@
 import Foundation
 import Vapor
 
-struct Connection {
+struct UserConnection {
     let userID: UUID
     let socket: WebSocket
 }

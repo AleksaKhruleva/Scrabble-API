@@ -15,10 +15,14 @@ struct CreateRoomMigration: AsyncMigration {
             .field("game_status", .string, .required)
         
             .field("leaderboard", .json, .required)
-            .field("tiles_left", .int, .required)
+            .field("tiles_left", .json, .required)
             .field("board", .string, .required)
+            .field("turn_order", .array(of: .uuid), .required)
+            .field("current_turn_index", .int, .required)
+            .field("time_per_turn", .int, .required)
+            .field("max_players", .int, .required)
         
-            .field("player_tiles", .json, .required)
+            .field("players_tiles", .json, .required)
             .field("placed_words", .array(of: .string), .required)
         
             .unique(on: "invite_code")

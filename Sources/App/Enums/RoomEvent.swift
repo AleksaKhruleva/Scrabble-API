@@ -8,4 +8,6 @@ enum RoomEvent: String, Codable {
     
     case kickedByAdmin = "kicked_by_admin"
     case playerWasKicked = "player_was_kicked"
+    
+    case gameStarted = "game_started"
 }
