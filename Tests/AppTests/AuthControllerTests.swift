@@ -3,11 +3,12 @@ import XCTVapor
 import Testing
 import Fluent
 
-@Suite("App Tests with PostgreSQL", .serialized)
+@Suite("AuthController Tests", .serialized)
 struct AuthControllerTests {
     private func withApp(_ test: (Application) async throws -> ()) async throws {
         let app = try await Application.make(.testing)
         do {
+            app.logger.logLevel = .error
             try await configure(app)
             try await app.autoMigrate()
             try await test(app)
@@ -21,7 +22,7 @@ struct AuthControllerTests {
     }
     
     @Test("User Registration")
-    func test_register_withValidData_shouldCreateUser() async throws {
+    func test_register_withValidData_shouldReturnToken() async throws {
         let user = RegisterUserDTO(username: "testuser", email: "test@example.com", password: "password123")
         
         try await withApp { app in
@@ -30,9 +31,8 @@ struct AuthControllerTests {
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
                 
-                let registeredUser = try res.content.decode(User.Public.self)
-                #expect(registeredUser.username == "testuser")
-                #expect(registeredUser.email == "test@example.com")
+                let token = try res.content.decode(Token.self)
+                #expect(token.value != "")
             })
         }
     }
@@ -53,6 +53,9 @@ struct AuthControllerTests {
                 try req.content.encode(registerUser)
             }, afterResponse: { res async throws in
                 #expect(res.status == .internalServerError)
+                
+                let errorResponse = try res.content.decode(ErrorDTO.self)
+                #expect(errorResponse.reason.contains("Database operation failed"))
             })
         }
     }
@@ -72,6 +75,28 @@ struct AuthControllerTests {
                 
                 let token = try res.content.decode(Token.self)
                 #expect(token.value != "")
+            })
+        }
+    }
+    
+    @Test("User Login with Existing Token")
+    func test_login_withExistingToken_shouldUpdateToken() async throws {
+        let user = User(username: "testuser", email: "test@example.com", password: try Bcrypt.hash("password123"))
+        
+        try await withApp { app in
+            try await user.save(on: app.db)
+            
+            let existingToken = Token(value: "old_token", userID: try user.requireID())
+            try await existingToken.save(on: app.db)
+            
+            try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
+                let basicAuth = BasicAuthorization(username: user.email, password: "password123")
+                req.headers.basicAuthorization = basicAuth
+            }, afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                
+                let updatedToken = try res.content.decode(Token.self)
+                #expect(updatedToken.value != existingToken.value)
             })
         }
     }

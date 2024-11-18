@@ -12,6 +12,7 @@ struct CreateTokenMigration: AsyncMigration {
             .field("value", .string, .required)
             .field("user_id", .uuid, .required, .references("users", "id", onDelete: .cascade))
         
+            .unique(on: "user_id")
             .create()
     }
     
