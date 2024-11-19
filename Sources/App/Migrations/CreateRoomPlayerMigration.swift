@@ -13,6 +13,7 @@ struct CreateRoomPlayerMigration: AsyncMigration {
             .field("player_id", .uuid, .required, .references("users", "id", onDelete: .cascade))
         
             .unique(on: "room_id", "player_id")
+            .unique(on: "player_id")
             .create()
     }
     
