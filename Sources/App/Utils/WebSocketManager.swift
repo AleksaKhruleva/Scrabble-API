@@ -69,6 +69,18 @@ extension WebSocketManager {
                     kickPlayerID: kickPlayerID,
                     db: req.db
                 )
+            case .leaveRoom:
+                await handleLeaveRoom(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .closeRoom:
+                await handleCloseRoom(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
             case .startGame:
                 await handleStartGame(
                     socket: socket,
@@ -99,6 +111,15 @@ extension WebSocketManager {
                 // send error: could not fetch username from db
                 return
             }
+            guard let room = try await Room.query(on: db).with(\.$players).filter(\.$id == roomID).first() else {
+                // send error: cannot fetch room
+                return
+            }
+            let isUserInRoom = room.players.contains { $0.$player.id == userID }
+            guard isUserInRoom else {
+                // send error: user is not a valid player in this room
+                return
+            }
             // TODO: check valid roomID
             let connection = addConnection(roomID: roomID, userID: userID, socket: socket)
             sendMessage(to: [connection], outcomingMessage: OutcomingMessage(event: .joinedRoom))
@@ -106,7 +127,7 @@ extension WebSocketManager {
             sendMessage(
                 to: otherConnections,
                 outcomingMessage: OutcomingMessage(
-                    event: .newPlayerJoined,
+                    event: .playerJoined,
                     newPlayerInfo: PlayerInfo(id: userID, name: userName)
                 )
             )
@@ -131,6 +152,10 @@ extension WebSocketManager {
             }
             guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
                 // send error: not admin
+                return
+            }
+            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
+                // send error: cannot make room private because game status is invalid
                 return
             }
             room.isPrivate = true
@@ -163,6 +188,10 @@ extension WebSocketManager {
                 // send error: not admin
                 return
             }
+            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
+                // send error: cannot kick player because game status is invalid
+                return
+            }
             try await RoomPlayer.query(on: db)
                 .filter(\RoomPlayer.$room.$id == roomID)
                 .filter(\RoomPlayer.$player.$id == kickPlayerID)
@@ -178,13 +207,114 @@ extension WebSocketManager {
                 sendMessage(
                     to: connections[roomID],
                     outcomingMessage: OutcomingMessage(
-                        event: .playerWasKicked,
+                        event: .playerKicked,
                         kickedPlayerID: kickPlayerID
                     )
                 )
             }
         } catch {
             // send error
+        }
+    }
+    
+    private func handleLeaveRoom(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db), room.$admin.id != userID else {
+                // send error: admin cannot leave the room
+                return
+            }
+            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
+                // send error: cannot leave room because game status is invalid
+                return
+            }
+            
+            try await db.transaction { db in
+                try await RoomPlayer.query(on: db)
+                    .filter(\.$room.$id == roomID)
+                    .filter(\.$player.$id == userID)
+                    .delete()
+                
+                let playerCount = try await RoomPlayer.query(on: db)
+                    .filter(\.$room.$id == roomID)
+                    .count()
+                
+                if room.gameStatus == GameStatus.ready.rawValue && playerCount < room.maxPlayers {
+                    room.gameStatus = GameStatus.waiting.rawValue
+                    try await room.update(on: db)
+                }
+            }
+            
+            if let leavingPlayerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [leavingPlayerConnection],
+                    outcomingMessage: OutcomingMessage(event: .leftRoom)
+                )
+                try await leavingPlayerConnection.socket.close()
+                removeConnection(for: leavingPlayerConnection.socket, roomID: roomID)
+                sendMessage(
+                    to: connections[roomID],
+                    outcomingMessage: OutcomingMessage(
+                        event: .playerLeft,
+                        leftPlayerID: userID
+                    )
+                )
+            }
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleCloseRoom(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
+                // send error: cannot close room because game status is invalid
+                return
+            }
+            
+            try await room.delete(on: db)
+            
+            sendMessage(
+                to: connections[roomID],
+                outcomingMessage: OutcomingMessage(event: .roomClosed)
+            )
+            
+            if let roomConnections = connections[roomID] {
+                for connection in roomConnections {
+                    try await connection.socket.close()
+                }
+            }
+            
+            connections[roomID] = nil
+        } catch {
+            // senf error
         }
     }
     
@@ -204,6 +334,10 @@ extension WebSocketManager {
             }
             guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
                 // send error: not admin
+                return
+            }
+            guard room.gameStatus == GameStatus.ready.rawValue else {
+                // send error: cannot start because game status is invalid
                 return
             }
             
@@ -229,16 +363,13 @@ extension WebSocketManager {
             let leaderboardCopy = leaderboard
             let tilesLeftCopy = tilesLeft
             
-            try await db.transaction { db in
-                room.board = boardString
-                room.turnOrder = turnOrder
-                room.leaderboard = leaderboardCopy
-                room.tilesLeft = tilesLeftCopy
-                room.playersTiles = playersTiles
-                room.gameStatus = GameStatus.started.rawValue
-                
-                try await room.save(on: db)
-            }
+            room.board = boardString
+            room.turnOrder = turnOrder
+            room.leaderboard = leaderboardCopy
+            room.tilesLeft = tilesLeftCopy
+            room.playersTiles = playersTiles
+            room.gameStatus = GameStatus.started.rawValue
+            try await room.save(on: db)
             
             for playerID in turnOrder {
                 let playerTiles = playersTiles[playerID.uuidString]
