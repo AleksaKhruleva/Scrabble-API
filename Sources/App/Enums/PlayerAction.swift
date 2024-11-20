@@ -5,7 +5,7 @@ enum PlayerAction: String, Codable {
     case startGame = "start_game"
     //    case pauseGame = "pause_game"
     //    case endGame = "end_game"
-    case makeRoomPrivate = "make_room_private"
+    case changeRoomPrivacy = "change_room_privacy"
     case kickPlayer = "kick_player"
     //    case makeMove = "make_move"
     //    case skipTurn = "skip_turn"

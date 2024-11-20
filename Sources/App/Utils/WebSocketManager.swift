@@ -52,8 +52,8 @@ extension WebSocketManager {
                     userID: userID,
                     db: req.db
                 )
-            case .makeRoomPrivate:
-                await handleMakeRoomPrivate(
+            case .changeRoomPrivacy:
+                await handleChangeRoomPrivacy(
                     socket: socket,
                     roomID: incomingMessage.roomID,
                     db: req.db
@@ -115,7 +115,7 @@ extension WebSocketManager {
         }
     }
     
-    private func handleMakeRoomPrivate(
+    private func handleChangeRoomPrivacy(
         socket: WebSocket,
         roomID: UUID,
         db: Database
@@ -133,11 +133,17 @@ extension WebSocketManager {
                 // send error: not admin
                 return
             }
-            room.isPrivate = true
+            guard room.gameStatus == GameStatus.ready.rawValue ||
+                    room.gameStatus == GameStatus.waiting.rawValue
+            else {
+                // send error: game already started
+                return
+            }
+            room.isPrivate.toggle()
             try await room.update(on: db)
             sendMessage(
                 to: connections[roomID],
-                outcomingMessage: OutcomingMessage(event: .roomWasMadePrivate)
+                outcomingMessage: OutcomingMessage(event: .roomChangedPrivacy, newRoomPrivacy: room.isPrivate)
             )
         } catch {
             // send error

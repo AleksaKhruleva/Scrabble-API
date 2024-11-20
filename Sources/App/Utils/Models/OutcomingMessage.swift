@@ -3,6 +3,7 @@ import Foundation
 struct OutcomingMessage: Codable {
     let event: RoomEvent
     let newPlayerInfo: PlayerInfo?
+    let newRoomPrivacy: Bool?
     let kickedPlayerID: UUID?
     let boardLayout: [[BonusType]]?
     let currentTurn: UUID?
@@ -12,6 +13,7 @@ struct OutcomingMessage: Codable {
     init(
         event: RoomEvent,
         newPlayerInfo: PlayerInfo? = nil,
+        newRoomPrivacy: Bool? = nil,
         kickedPlayerID: UUID? = nil,
         boardLayout: [[BonusType]]? = nil,
         currentTurn: UUID? = nil,
@@ -25,5 +27,6 @@ struct OutcomingMessage: Codable {
         self.currentTurn = currentTurn
         self.leaderboard = leaderboard
         self.playerTiles = playerTiles
+        self.newRoomPrivacy = newRoomPrivacy
     }
 }
