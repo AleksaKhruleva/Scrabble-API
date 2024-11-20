@@ -699,11 +699,11 @@ extension WebSocketManager {
         for letterPlacement in letters {
             let row = letterPlacement.position[0]
             let col = letterPlacement.position[1]
-            let index = row * 15 + col
+            let index = row * BoardLayoutProvider.shared.size + col
 
             let letter = board[board.index(board.startIndex, offsetBy: index)]
 
-            guard let letterScore = tileWeights[String(letter)] else {
+            guard let letterWeight = tileWeights[String(letter)] else {
                 continue
             }
 
@@ -711,17 +711,17 @@ extension WebSocketManager {
 
             switch bonus {
             case .doubleLetter:
-                totalScore += letterScore * 2
+                totalScore += letterWeight * 2
             case .tripleLetter:
-                totalScore += letterScore * 3
+                totalScore += letterWeight * 3
             case .doubleWord:
-                totalScore += letterScore
+                totalScore += letterWeight
                 wordMultiplier *= 2
             case .tripleWord:
-                totalScore += letterScore
+                totalScore += letterWeight
                 wordMultiplier *= 3
             case .none:
-                totalScore += letterScore
+                totalScore += letterWeight
             }
         }
 
