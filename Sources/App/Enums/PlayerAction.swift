@@ -10,5 +10,5 @@ enum PlayerAction: String, Codable {
     case leaveRoom = "leave_room" // for everyone except admin
     case closeRoom = "close_room" // only for admin
     //    case makeMove = "make_move"
-    //    case skipTurn = "skip_turn"
+    case skipTurn = "skip_turn"
 }

@@ -6,6 +6,7 @@ struct OutcomingMessage: Codable {
     let newRoomPrivacy: Bool?
     let kickedPlayerID: UUID?
     let leftPlayerID: UUID?
+    let skippedPlayerID: UUID?
     let boardLayout: [[BonusType]]?
     let currentTurn: UUID?
     let leaderboard: [String: Int]?
@@ -17,6 +18,7 @@ struct OutcomingMessage: Codable {
         newRoomPrivacy: Bool? = nil,
         kickedPlayerID: UUID? = nil,
         leftPlayerID: UUID? = nil,
+        skippedPlayerID: UUID? = nil,
         boardLayout: [[BonusType]]? = nil,
         currentTurn: UUID? = nil,
         leaderboard: [String: Int]? = nil,
@@ -26,6 +28,7 @@ struct OutcomingMessage: Codable {
         self.newPlayerInfo = newPlayerInfo
         self.kickedPlayerID = kickedPlayerID
         self.leftPlayerID = leftPlayerID
+        self.skippedPlayerID = skippedPlayerID
         self.boardLayout = boardLayout
         self.currentTurn = currentTurn
         self.leaderboard = leaderboard

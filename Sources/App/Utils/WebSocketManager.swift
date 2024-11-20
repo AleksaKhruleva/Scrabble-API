@@ -81,6 +81,12 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
+            case .skipTurn:
+                await handleSkipTurn(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
             case .startGame:
                 await handleStartGame(
                     socket: socket,
@@ -316,7 +322,58 @@ extension WebSocketManager {
             
             connections[roomID] = nil
         } catch {
-            // senf error
+            // send error
+        }
+    }
+    
+    private func handleSkipTurn(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: skip turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            if let skippingPlayerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+                try await room.update(on: db)
+                sendMessage(
+                    to: [skippingPlayerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .skippedTurn,
+                        currentTurn: room.turnOrder[room.currentTurnIndex]
+                    )
+                )
+                let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+                sendMessage(
+                    to: otherConnections,
+                    outcomingMessage: OutcomingMessage(
+                        event: .playerSkippedTurn,
+                        skippedPlayerID: userID,
+                        currentTurn: room.turnOrder[room.currentTurnIndex]
+                    )
+                )
+            }
+        } catch {
+            // send error
         }
     }
     
