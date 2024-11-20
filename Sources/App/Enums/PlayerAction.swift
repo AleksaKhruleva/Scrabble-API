@@ -3,7 +3,8 @@ import Foundation
 enum PlayerAction: String, Codable {
     case joinRoom = "join_room"
     case startGame = "start_game"
-    //    case pauseGame = "pause_game"
+    case pauseGame = "pause_game"
+    case resumeGame = "resume_game"
     //    case endGame = "end_game"
     case makeRoomPrivate = "make_room_private"
     case kickPlayer = "kick_player"

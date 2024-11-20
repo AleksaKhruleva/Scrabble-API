@@ -87,6 +87,18 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
+            case .pauseGame:
+                await handlePauseGame(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .resumeGame:
+                await handleResumeGame(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
             }
         } catch {
             // send error
@@ -388,6 +400,75 @@ extension WebSocketManager {
                 }
                 sendMessage(to: [currentConnection], outcomingMessage: message)
             }
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handlePauseGame(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
+                // send error: only the admin can pause the game
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: cannot pause because game status is invalid
+                return
+            }
+            room.gameStatus = GameStatus.paused.rawValue
+            try await room.update(on: db)
+            sendMessage(
+                to: connections[roomID],
+                outcomingMessage: OutcomingMessage(event: .gamePaused)
+            )
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleResumeGame(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
+                // send error: only the admin can resume the game
+                return
+            }
+            guard room.gameStatus == GameStatus.paused.rawValue else {
+                // send error: cannot resume because game status is invalid
+                return
+            }
+            room.gameStatus = GameStatus.started.rawValue
+            try await room.update(on: db)
+            sendMessage(
+                to: connections[roomID],
+                outcomingMessage: OutcomingMessage(
+                    event: .gameResumed,
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
+                )
+            )
         } catch {
             // send error
         }
