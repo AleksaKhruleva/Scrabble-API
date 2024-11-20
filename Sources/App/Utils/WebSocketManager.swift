@@ -87,6 +87,17 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
+            case .exchangeTiles:
+                guard let changingTiles = incomingMessage.changingTiles else {
+                    // send error: no changingTilesIndexes
+                    return
+                }
+                await handleExchangeTiles(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    changingTiles: changingTiles,
+                    db: req.db
+                )
             case .startGame:
                 await handleStartGame(
                     socket: socket,
@@ -377,6 +388,92 @@ extension WebSocketManager {
         }
     }
     
+    private func handleExchangeTiles(
+        socket: WebSocket,
+        roomID: UUID,
+        changingTiles: [Int],
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: skip turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard room.tilesLeft.values.reduce(0, +) >= 7 else {
+                // send error: there must be 7 or more tiles left
+                return
+            }
+            guard changingTiles.count > 0 && changingTiles.count < 8 else {
+                // send error: you can exchange from 1 to 7 tiles
+                return
+            }
+            
+            // returning tiles to bag
+            for index in changingTiles {
+                if let currentTile = room.playersTiles[userID.uuidString]?[index],
+                   let currentTileLeftCount = room.tilesLeft[currentTile] {
+                    room.tilesLeft[currentTile] = currentTileLeftCount + 1
+                }
+            }
+            
+            // giving new tiles to player
+            var tilesLeft = room.tilesLeft
+            let playerTiles = redistributeTiles(
+                to: userID,
+                withTiles: room.playersTiles[userID.uuidString]!,
+                onIndexes: changingTiles,
+                using: &tilesLeft
+            )
+            
+            // updating room
+            room.playersTiles[userID.uuidString] = playerTiles
+            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            room.tilesLeft = tilesLeft
+            try await room.update(on: db)
+            
+            // noticing player about his new tiles
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .exhangedTiles,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // noticing other players about another's player exhanging turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerExchangedTiles,
+                    exchangedTilesPlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
     private func handleStartGame(
         socket: WebSocket,
         roomID: UUID,
@@ -467,6 +564,27 @@ extension WebSocketManager {
             return false
         }
         return connections.contains { $0.socket === socket }
+    }
+    
+    private func redistributeTiles(
+        to player: UUID,
+        withTiles playerTiles: [String],
+        onIndexes changingTiles: [Int],
+        using tiles: inout [String: Int]
+    ) -> [String] {
+        var newPlayerTiles = playerTiles
+        
+        for index in changingTiles {
+            guard let randomLetter = tiles.keys.randomElement() else { break }
+            newPlayerTiles[index] = randomLetter
+            if let count = tiles[randomLetter], count > 1 {
+                tiles[randomLetter] = count - 1
+            } else {
+                tiles.removeValue(forKey: randomLetter)
+            }
+        }
+        
+        return newPlayerTiles
     }
     
     private func distributeTiles(to players: [UUID], using tiles: inout [String: Int]) -> [String: [String]] {

@@ -15,6 +15,9 @@ enum RoomEvent: String, Codable {
     case skippedTurn = "skipped_turn"
     case playerSkippedTurn = "player_skipped_turn"
     
+    case exhangedTiles = "exchanged_tiles"
+    case playerExchangedTiles = "player_exchanged_tiles"
+    
     case roomClosed = "room_closed"
     
     case gameStarted = "game_started"
