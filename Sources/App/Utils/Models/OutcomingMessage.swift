@@ -8,6 +8,9 @@ struct OutcomingMessage: Codable {
     let leftPlayerID: UUID?
     let skippedPlayerID: UUID?
     let exchangedTilesPlayerID: UUID?
+    let madeMovePlayerID: UUID?
+    let newWord: String?
+    let scoredPoints: Int?
     let boardLayout: [[BonusType]]?
     let currentTurn: UUID?
     let leaderboard: [String: Int]?
@@ -21,6 +24,9 @@ struct OutcomingMessage: Codable {
         leftPlayerID: UUID? = nil,
         skippedPlayerID: UUID? = nil,
         exchangedTilesPlayerID: UUID? = nil,
+        madeMovePlayerID: UUID? = nil,
+        newWord: String? = nil,
+        scoredPoints: Int? = nil,
         boardLayout: [[BonusType]]? = nil,
         currentTurn: UUID? = nil,
         leaderboard: [String: Int]? = nil,
@@ -32,6 +38,9 @@ struct OutcomingMessage: Codable {
         self.leftPlayerID = leftPlayerID
         self.skippedPlayerID = skippedPlayerID
         self.exchangedTilesPlayerID = exchangedTilesPlayerID
+        self.madeMovePlayerID = madeMovePlayerID
+        self.newWord = newWord
+        self.scoredPoints = scoredPoints
         self.boardLayout = boardLayout
         self.currentTurn = currentTurn
         self.leaderboard = leaderboard

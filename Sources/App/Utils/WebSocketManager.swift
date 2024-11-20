@@ -98,6 +98,20 @@ extension WebSocketManager {
                     changingTiles: changingTiles,
                     db: req.db
                 )
+            case .makeMove:
+                guard
+                    let direction = incomingMessage.direction,
+                    let letters = incomingMessage.letters else {
+                    // send error: no direction or letters
+                    return
+                }
+                await handleMakeMove(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    direction: direction,
+                    letters: letters,
+                    db: req.db
+                )
             case .startGame:
                 await handleStartGame(
                     socket: socket,
@@ -474,6 +488,126 @@ extension WebSocketManager {
         }
     }
     
+    private func handleMakeMove(
+        socket: WebSocket,
+        roomID: UUID,
+        direction: Direction,
+        letters: [LetterPlacement],
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: skip turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard var playerTiles = room.playersTiles[userID.uuidString] else {
+                // send error
+                return
+            }
+            let word = letters.buildWord(with: playerTiles, direction: direction)
+            guard isValidWord(word) else {
+                // send error: word is invalid
+                return
+            }
+            if room.placedWords.count == 0 {
+                guard letters.contains(where: { $0.position == [7, 7] }) else {
+                    // send error: first word on the board must cover the center [7; 7]
+                    return
+                }
+            }
+            
+            // check words around new word
+            
+            // place the word on the board
+            var board = room.board
+            for letter in letters {
+                let row = letter.position[0]
+                let col = letter.position[1]
+                let index = row * 15 + col
+                board = board.replacingCharacters(
+                    in: board.index(
+                        board.startIndex,
+                        offsetBy: index
+                    )...board.index(
+                        board.startIndex,
+                        offsetBy: index
+                    ),
+                    with: playerTiles[letter.tileIndex]
+                )
+            }
+            
+            // giving new tiles to player
+            var tilesLeft = room.tilesLeft
+            playerTiles = redistributeTiles(
+                to: userID,
+                withTiles: playerTiles,
+                onIndexes: letters.getIndexes(),
+                using: &tilesLeft
+            )
+            
+            // count points, update leaderboard
+            let playerScore = calculateScore(
+                letters: letters,
+                board: board,
+                boardLayout: BoardLayoutProvider.shared.layout,
+                tileWeights: LettersInfoProvider.shared.initialWeights()
+            )
+            
+            // update room
+            room.playersTiles[userID.uuidString] = playerTiles
+            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            room.tilesLeft = tilesLeft
+            room.placedWords.append(word)
+            room.board = board
+            // update leaderboard, etc ...
+            try await room.update(on: db)
+            
+            // notice player about his points for thiw word
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .madeMove,
+                        newWord: word,
+                        scoredPoints: playerScore,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // notice other players about the turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerMadeMove,
+                    madeMovePlayerID: userID,
+                    newWord: word,
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
     private func handleStartGame(
         socket: WebSocket,
         roomID: UUID,
@@ -548,6 +682,131 @@ extension WebSocketManager {
             // send error
         }
     }
+}
+
+// Need to be moved to some WordManager class
+extension WebSocketManager {
+    
+    func calculateScore(
+        letters: [LetterPlacement],
+        board: String,
+        boardLayout: [[BonusType]],
+        tileWeights: [String: Int]
+    ) -> Int {
+        var totalScore = 0
+        var wordMultiplier = 1
+
+        for letterPlacement in letters {
+            let row = letterPlacement.position[0]
+            let col = letterPlacement.position[1]
+            let index = row * 15 + col
+
+            let letter = board[board.index(board.startIndex, offsetBy: index)]
+
+            guard let letterScore = tileWeights[String(letter)] else {
+                continue
+            }
+
+            let bonus = boardLayout[row][col]
+
+            switch bonus {
+            case .doubleLetter:
+                totalScore += letterScore * 2
+            case .tripleLetter:
+                totalScore += letterScore * 3
+            case .doubleWord:
+                totalScore += letterScore
+                wordMultiplier *= 2
+            case .tripleWord:
+                totalScore += letterScore
+                wordMultiplier *= 3
+            case .none:
+                totalScore += letterScore
+            }
+        }
+
+        return totalScore * wordMultiplier
+    }
+
+    private func findAllWords(
+        from letters: [LetterPlacement],
+        with playerTiles: [String],
+        direction: Direction,
+        board: [[String]]
+    ) -> [String] {
+        var words = [String]()
+
+        // Основное слово
+        let mainWord = letters.buildWord(with: playerTiles, direction: direction)
+        words.append(mainWord)
+
+        // Проверяем пересечения
+        for letter in letters {
+            let row = letter.position[0]
+            let col = letter.position[1]
+            if direction == Direction.horizontal {
+                // Проверяем вертикальное слово
+                let verticalWord = findWord(row: row, col: col, direction: Direction.vertical, board: board)
+                if verticalWord.count > 1 {
+                    words.append(verticalWord)
+                }
+            } else {
+                // Проверяем горизонтальное слово
+                let horizontalWord = findWord(row: row, col: col, direction: Direction.horizontal, board: board)
+                if horizontalWord.count > 1 {
+                    words.append(horizontalWord)
+                }
+            }
+        }
+
+        return words
+    }
+
+    private func findWord(row: Int, col: Int, direction: Direction, board: [[String]]) -> String {
+        var word = ""
+        var r = row
+        var c = col
+
+        // Идём назад, чтобы найти начало слова
+        while r >= 0, c >= 0, board[r][c] != ".", board[r][c] != " " {
+            if direction == Direction.horizontal {
+                c -= 1
+            } else {
+                r -= 1
+            }
+        }
+
+        // Идём вперёд, чтобы собрать слово
+        if direction == Direction.horizontal {
+            c += 1
+        } else {
+            r += 1
+        }
+
+        while r < 15, c < 15, board[r][c] != ".", board[r][c] != " " {
+            word.append(board[r][c])
+            if direction == Direction.horizontal {
+                c += 1
+            } else {
+                r += 1
+            }
+        }
+
+        return word
+    }
+    
+    private func validateWords(_ words: [String]) throws {
+       for word in words {
+           guard isValidWord(word) else {
+               throw Abort(.badRequest, reason: "Invalid word: \(word)")
+           }
+       }
+   }
+
+   private func isValidWord(_ word: String) -> Bool {
+       // самая наикрутейшая возможная и доступная человечеству проверка валидности слова
+       return true
+   }
 }
 
 

@@ -5,4 +5,6 @@ struct IncomingMessage: Codable {
     let roomID: UUID
     let kickPlayerID: UUID?
     let changingTiles: [Int]?
+    let direction: Direction?
+    let letters: [LetterPlacement]?
 }
