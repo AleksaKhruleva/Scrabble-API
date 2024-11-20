@@ -135,6 +135,7 @@ extension WebSocketManager {
             // TODO: check valid roomID
             let connection = addConnection(roomID: roomID, userID: userID, socket: socket)
             sendMessage(to: [connection], outcomingMessage: OutcomingMessage(event: .joinedRoom))
+            
             let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
             sendMessage(
                 to: otherConnections,
@@ -143,6 +144,17 @@ extension WebSocketManager {
                     newPlayerInfo: PlayerInfo(id: userID, name: userName)
                 )
             )
+            
+            guard let adminConnection = otherConnections?.first(where: { $0.userID == room.$admin.id }) else {
+                return
+            }
+            
+            if room.players.count == room.maxPlayers {
+                sendMessage(
+                    to: [adminConnection],
+                    outcomingMessage: OutcomingMessage(event: .roomReady)
+                )
+            }
         } catch {
             // send error
         }
@@ -204,10 +216,24 @@ extension WebSocketManager {
                 // send error: cannot kick player because game status is invalid
                 return
             }
-            try await RoomPlayer.query(on: db)
-                .filter(\RoomPlayer.$room.$id == roomID)
-                .filter(\RoomPlayer.$player.$id == kickPlayerID)
-                .delete()
+            
+            var initialGameStatus = room.gameStatus
+            
+            try await db.transaction { db in
+                try await RoomPlayer.query(on: db)
+                    .filter(\.$room.$id == roomID)
+                    .filter(\.$player.$id == kickPlayerID)
+                    .delete()
+                
+                let playerCount = try await RoomPlayer.query(on: db)
+                    .filter(\.$room.$id == roomID)
+                    .count()
+                
+                if room.gameStatus == GameStatus.ready.rawValue && playerCount < room.maxPlayers {
+                    room.gameStatus = GameStatus.waiting.rawValue
+                    try await room.update(on: db)
+                }
+            }
             
             if let kickPlayerConnection = connections[roomID]?.first(where: { $0.userID == kickPlayerID }) {
                 sendMessage(
@@ -222,6 +248,13 @@ extension WebSocketManager {
                         event: .playerKicked,
                         kickedPlayerID: kickPlayerID
                     )
+                )
+            }
+            
+            if room.gameStatus != initialGameStatus, let adminConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [adminConnection],
+                    outcomingMessage: OutcomingMessage(event: .roomWaiting)
                 )
             }
         } catch {
