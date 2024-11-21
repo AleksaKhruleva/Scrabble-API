@@ -58,8 +58,8 @@ extension WebSocketManager {
                     userID: userID,
                     db: req.db
                 )
-            case .makeRoomPrivate:
-                await handleMakeRoomPrivate(
+            case .changeRoomPrivacy:
+                await handleChangeRoomPrivacy(
                     socket: socket,
                     roomID: incomingMessage.roomID,
                     db: req.db
@@ -87,6 +87,23 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
+            case .exchangeTiles:
+                guard let changingTiles = incomingMessage.changingTiles else {
+                    // send error: no changingTilesIndexes
+                    return
+                }
+                await handleExchangeTiles(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    changingTiles: changingTiles,
+                    db: req.db
+                )
+            case .suggestToEndGame:
+                await handleEndGameSuggestion(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
             case .pauseGame:
                 await handlePauseGame(
                     socket: socket,
@@ -95,6 +112,40 @@ extension WebSocketManager {
                 )
             case .resumeGame:
                 await handleResumeGame(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .skipTurn:
+                await handleEndTurn(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    emptyTurn: true,
+                    db: req.db
+                )
+            case .endTurn:
+                await handleEndTurn(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    emptyTurn: false,
+                    db: req.db
+                )
+            case .placeWord:
+                guard
+                    let direction = incomingMessage.direction,
+                    let letters = incomingMessage.letters else {
+                    // send error: no direction or letters
+                    return
+                }
+                await handlePlaceWord(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    direction: direction,
+                    letters: letters,
+                    db: req.db
+                )
+            case .startGame:
+                await handleStartGame(
                     socket: socket,
                     roomID: incomingMessage.roomID,
                     db: req.db
@@ -181,7 +232,7 @@ extension WebSocketManager {
         }
     }
     
-    private func handleMakeRoomPrivate(
+    private func handleChangeRoomPrivacy(
         socket: WebSocket,
         roomID: UUID,
         db: Database
@@ -199,15 +250,17 @@ extension WebSocketManager {
                 // send error: not admin
                 return
             }
-            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
-                // send error: cannot make room private because game status is invalid
+            guard room.gameStatus == GameStatus.ready.rawValue ||
+                    room.gameStatus == GameStatus.waiting.rawValue
+            else {
+                // send error: game already started
                 return
             }
-            room.isPrivate = true
+            room.isPrivate.toggle()
             try await room.update(on: db)
             sendMessage(
                 to: connections[roomID],
-                outcomingMessage: OutcomingMessage(event: .roomWasMadePrivate)
+                outcomingMessage: OutcomingMessage(event: .roomChangedPrivacy, newRoomPrivacy: room.isPrivate)
             )
         } catch {
             // send error
@@ -386,6 +439,368 @@ extension WebSocketManager {
         }
     }
     
+    private func handleExchangeTiles(
+        socket: WebSocket,
+        roomID: UUID,
+        changingTiles: [Int],
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: exchange turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard room.tilesLeft.values.reduce(0, +) >= 7 else {
+                // send error: there must be 7 or more tiles left
+                return
+            }
+            guard changingTiles.count > 0 && changingTiles.count < 8 else {
+                // send error: you can exchange from 1 to 7 tiles
+                return
+            }
+            
+            // returning tiles to bag
+            for index in changingTiles {
+                if let currentTile = room.playersTiles[userID.uuidString]?[index],
+                   let currentTileLeftCount = room.tilesLeft[currentTile] {
+                    room.tilesLeft[currentTile] = currentTileLeftCount + 1
+                }
+            }
+            
+            // giving new tiles to player
+            var tilesLeft = room.tilesLeft
+            let playerTiles = redistributeTiles(
+                to: userID,
+                withTiles: room.playersTiles[userID.uuidString]!,
+                onIndexes: changingTiles,
+                using: &tilesLeft
+            )
+            
+            // updating room
+            room.playersTiles[userID.uuidString] = playerTiles
+            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            room.tilesLeft = tilesLeft
+            try await room.update(on: db)
+            
+            // noticing player about his new tiles
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .exhangedTiles,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // noticing other players about another's player exhanging turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerExchangedTiles,
+                    exchangedTilesPlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleEndGameSuggestion(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: ending turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard room.currentSkippedTurns >= 6 else {
+                // send error: game can't be ended yet
+                return
+            }
+            
+            // Changing gameStatus to .waiting
+            room.gameStatus = GameStatus.waiting.rawValue
+            
+            // Reseting all room statistics
+            room.reset()
+            try await room.update(on: db)
+            
+            // Noticing players about end of the game because of 6 empty turns
+            if let playersConnections = connections[roomID] {
+                sendMessage(
+                    to: playersConnections,
+                    outcomingMessage: OutcomingMessage(
+                        event: .gameEndedMuchEmptyTurns
+                    )
+                )
+            }
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleEndTurn(
+        socket: WebSocket,
+        roomID: UUID,
+        emptyTurn: Bool,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: ending turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            if emptyTurn {
+                room.currentSkippedTurns += 1
+            } else {
+                room.currentSkippedTurns = 0
+            }
+            try await room.update(on: db)
+            guard let playerTiles = room.playersTiles[userID.uuidString] else {
+                // send error
+                return
+            }
+            
+            // Moved to the next turn
+            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            try await room.update(on: db)
+            
+            // Notice player about his turn
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .endedTurn,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        leaderboard: room.leaderboard,
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // Notice other players about the turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerPlacedWord,
+                    endedTurnPlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    leaderboard: room.leaderboard
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handlePlaceWord(
+        socket: WebSocket,
+        roomID: UUID,
+        direction: Direction,
+        letters: [LetterPlacement],
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: placing the word is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard var playerTiles = room.playersTiles[userID.uuidString] else {
+                // send error
+                return
+            }
+            let gameService = WordGameService()
+            let word = letters.buildWord(with: playerTiles, direction: direction)
+            guard try await gameService.isValidWord(word, on: db) else {
+                // send error: word \(word) is invalid
+                return
+            }
+            if room.placedWords.count == 0 {
+                guard letters.contains(where: { $0.position == [7, 7] }) else {
+                    // send error: first word on the board must cover the center [7; 7]
+                    return
+                }
+            }
+            
+            var board = room.board
+            
+            // Checking words around new word
+            let _ = gameService.findAllWords(
+                from: letters,
+                forWord: word,
+                direction: direction,
+                board: board
+            )
+            
+            // Placing new word on the board
+            let sameLetterCount = try gameService.placeLetters(
+                from: letters,
+                withTiles: playerTiles,
+                board: &board
+            )
+            if room.placedWords.count > 0 {
+                guard sameLetterCount > 0 else {
+                    // send error: new word should cross any other word on the board
+                    return
+                }
+            }
+            
+            // Giving new tiles to player
+            var tilesLeft = room.tilesLeft
+            playerTiles = redistributeTiles(
+                to: userID,
+                withTiles: playerTiles,
+                onIndexes: letters.getIndexes(),
+                using: &tilesLeft
+            )
+            
+            // Count player's score for new word
+            let playerScore = gameService.calculateScore(
+                letters: letters,
+                board: board,
+                boardLayout: BoardLayoutProvider.shared.layout,
+                tileWeights: LettersInfoProvider.shared.initialWeights()
+            )
+            
+            // Recalculate leaderboard
+            if let currentScore = room.leaderboard[userID.uuidString] {
+                room.leaderboard[userID.uuidString] = currentScore + playerScore
+            }
+            
+            // Update room in DB
+            room.playersTiles[userID.uuidString] = playerTiles
+            room.tilesLeft = tilesLeft
+            room.placedWords.append(word)
+            room.board = board
+            try await room.update(on: db)
+            
+            if playerTiles.isEmpty && room.tilesLeft.keys.isEmpty {
+                
+                // Notice winner about his win
+                
+                
+                // Notice other players about end of the game
+                
+                
+                // Change gameStatus to .waiting
+                room.gameStatus = GameStatus.waiting.rawValue
+                
+                // Reset all room statistics
+                room.reset()
+                try await room.update(on: db)
+                
+                return
+            }
+            
+            // Notice player about his points for thiw word
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .placedWord,
+                        newWord: word,
+                        scoredPoints: playerScore,
+                        leaderboard: room.leaderboard,
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // Notice other players about the turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerPlacedWord,
+                    placedWordPlayerID: userID,
+                    newWord: word,
+                    leaderboard: room.leaderboard
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleWin(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) {
+        
+    }
+    
     private func handleStartGame(
         socket: WebSocket,
         roomID: UUID,
@@ -404,7 +819,8 @@ extension WebSocketManager {
                 // send error: not admin
                 return
             }
-            guard room.gameStatus == GameStatus.ready.rawValue else {
+            guard room.gameStatus == GameStatus.ready.rawValue ||
+            room.gameStatus == GameStatus.waiting.rawValue else {
                 // send error: cannot start because game status is invalid
                 return
             }
@@ -417,6 +833,7 @@ extension WebSocketManager {
             let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
             
             let turnOrder = roomPlayersMap.keys.shuffled()
+
             let leaderboard = Dictionary(uniqueKeysWithValues: turnOrder.map { ($0.uuidString, 0) })
             
             var tilesLeft = LettersInfoProvider.shared.initialQuantities()
@@ -655,7 +1072,6 @@ extension WebSocketManager {
     }
 }
 
-
 extension WebSocketManager {
     
     private func addConnection(roomID: UUID, userID: UUID, socket: WebSocket) -> UserConnection {
@@ -671,6 +1087,38 @@ extension WebSocketManager {
         return connections.contains { $0.socket === socket }
     }
     
+    private func redistributeTiles(
+        to player: UUID,
+        withTiles playerTiles: [String],
+        onIndexes changingTiles: [Int],
+        using tiles: inout [String: Int]
+    ) -> [String] {
+        var newPlayerTiles = playerTiles
+        var remainingChangingTiles = changingTiles
+
+        let totalTilesAvailable = tiles.values.reduce(0, +)
+        if totalTilesAvailable < changingTiles.count {
+            remainingChangingTiles = Array(changingTiles.prefix(totalTilesAvailable))
+        }
+        
+        for index in Array(changingTiles.suffix(changingTiles.count - remainingChangingTiles.count)) {
+            newPlayerTiles[index] = ""
+        }
+        
+        for index in remainingChangingTiles {
+            guard let randomLetter = tiles.keys.randomElement() else { break }
+            
+            newPlayerTiles[index] = randomLetter
+            if let count = tiles[randomLetter], count > 1 {
+                tiles[randomLetter] = count - 1
+            } else {
+                tiles.removeValue(forKey: randomLetter)
+            }
+        }
+
+        return newPlayerTiles.filter { !$0.isEmpty }
+    }
+  
     private func resetRoomState(for room: Room, db: Database) async throws {
         room.gameStatus = GameStatus.waiting.rawValue
         room.leaderboard = [:]

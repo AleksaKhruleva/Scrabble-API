@@ -21,11 +21,12 @@ public func configure(_ app: Application) async throws {
     let userService: UserServiceProtocol = UserService(db: app.db)
     app.register(userService)
     
-    // MARK: - Setup migrations
+    // MARK: - Setup Migrations
     app.migrations.add(CreateUserMigration())
     app.migrations.add(CreateRoomMigration())
     app.migrations.add(CreateRoomPlayerMigration())
     app.migrations.add(CreateTokenMigration())
+    app.migrations.add(CreateWordMigration())
     try await app.autoMigrate().get()
     
     // MARK: - Register routes

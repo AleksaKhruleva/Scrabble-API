@@ -34,4 +34,10 @@ final class LettersInfoProvider: @unchecked Sendable {
             result[entry.key] = entry.value.initialQuantity
         }
     }
+    
+    func initialWeights() -> [String: Int] {
+        lettersInfo.reduce(into: [:]) { result, entry in
+            result[entry.key] = entry.value.weight
+        }
+    }
 }

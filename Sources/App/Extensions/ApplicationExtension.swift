@@ -1,6 +1,7 @@
 import Vapor
 
 extension Application {
+    
     func service<T: Sendable>(_ type: T.Type) -> T {
         guard let service = self.storage[GenericStorageKey<T>.self] else {
             fatalError("\(T.self) not configured. Register it in configure.swift")
