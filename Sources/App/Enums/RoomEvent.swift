@@ -28,14 +28,13 @@ enum RoomEvent: String, Codable {
     case placedWord = "placed_word"
     case playerPlacedWord = "player_placed_word"
     
-    case roomClosed = "room_closed"
-    
     case gameEndedMuchEmptyTurns = "game_ended_much_empty_turns"
+    case gameEndedSoloInRoom = "game_ended_solo_in_room"
+    case gameEndedPlayerWinned = "game_ended_player_winned"
     
     case gameStarted = "game_started"
     case gamePaused = "game_paused"
     case gameResumed = "game_resumed"
-    case gameEnded = "game_ended"
     
     case reactionSent = "reaction_sent"
 }

@@ -144,12 +144,6 @@ extension WebSocketManager {
                     letters: letters,
                     db: req.db
                 )
-            case .startGame:
-                await handleStartGame(
-                    socket: socket,
-                    roomID: incomingMessage.roomID,
-                    db: req.db
-                )
             case .leaveGame:
                 await handleLeaveGame(
                     socket: socket,
@@ -556,22 +550,24 @@ extension WebSocketManager {
                 return
             }
             
+            // Noticing players about end of the game because of 6 empty turns
+            if let winnerID = UUID(uuidString: room.leaderboard.max(by: { $0.value < $1.value })?.key ?? ""),
+                let playersConnections = connections[roomID] {
+                sendMessage(
+                    to: playersConnections,
+                    outcomingMessage: OutcomingMessage(
+                        event: .gameEndedMuchEmptyTurns,
+                        winnerID: winnerID
+                    )
+                )
+            }
+            
             // Changing gameStatus to .waiting
             room.gameStatus = GameStatus.waiting.rawValue
             
             // Reseting all room statistics
             room.reset()
             try await room.update(on: db)
-            
-            // Noticing players about end of the game because of 6 empty turns
-            if let playersConnections = connections[roomID] {
-                sendMessage(
-                    to: playersConnections,
-                    outcomingMessage: OutcomingMessage(
-                        event: .gameEndedMuchEmptyTurns
-                    )
-                )
-            }
         } catch {
             // send error
         }
@@ -626,7 +622,6 @@ extension WebSocketManager {
                     outcomingMessage: OutcomingMessage(
                         event: .endedTurn,
                         currentTurn: room.turnOrder[room.currentTurnIndex],
-                        leaderboard: room.leaderboard,
                         playerTiles: playerTiles
                     )
                 )
@@ -637,10 +632,9 @@ extension WebSocketManager {
             sendMessage(
                 to: otherConnections,
                 outcomingMessage: OutcomingMessage(
-                    event: .playerPlacedWord,
+                    event: .playerEndedTurn,
                     endedTurnPlayerID: userID,
-                    currentTurn: room.turnOrder[room.currentTurnIndex],
-                    leaderboard: room.leaderboard
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
                 )
             )
         } catch {
@@ -747,11 +741,16 @@ extension WebSocketManager {
             
             if playerTiles.isEmpty && room.tilesLeft.keys.isEmpty {
                 
-                // Notice winner about his win
-                
-                
-                // Notice other players about end of the game
-                
+                // Notice everyone about win
+                if let playersConnections = connections[roomID] {
+                    sendMessage(
+                        to: playersConnections,
+                        outcomingMessage: OutcomingMessage(
+                            event: .gameEndedPlayerWinned,
+                            winnerID: userID
+                        )
+                    )
+                }
                 
                 // Change gameStatus to .waiting
                 room.gameStatus = GameStatus.waiting.rawValue
@@ -771,7 +770,6 @@ extension WebSocketManager {
                         event: .placedWord,
                         newWord: word,
                         scoredPoints: playerScore,
-                        leaderboard: room.leaderboard,
                         playerTiles: playerTiles
                     )
                 )
@@ -784,8 +782,7 @@ extension WebSocketManager {
                 outcomingMessage: OutcomingMessage(
                     event: .playerPlacedWord,
                     placedWordPlayerID: userID,
-                    newWord: word,
-                    leaderboard: room.leaderboard
+                    newWord: word
                 )
             )
         } catch {
@@ -1025,9 +1022,6 @@ extension WebSocketManager {
                 try await leavingPlayerConnection.socket.close()
                 removeConnection(for: leavingPlayerConnection.socket, roomID: roomID)
                 
-                let roomPlayers = try await room.$players.query(on: db).with(\.$player).all()
-                let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
-                
                 let message = adminLeft
                 ? OutcomingMessage(
                     event: .playerLeftGame,
@@ -1051,7 +1045,7 @@ extension WebSocketManager {
                 sendMessage(
                     to: connections[roomID],
                     outcomingMessage: OutcomingMessage(
-                        event: .gameEnded,
+                        event: .gameEndedSoloInRoom,
                         winnerID: winnerID
                     )
                 )
