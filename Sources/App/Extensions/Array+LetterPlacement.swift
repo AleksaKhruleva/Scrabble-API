@@ -1,6 +1,7 @@
 import Foundation
 
 extension Array where Element == LetterPlacement {
+    
     func buildWord(with letters: [String], direction: Direction) -> String {
         return self
             .sorted { lhs, rhs in

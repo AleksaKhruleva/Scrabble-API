@@ -463,15 +463,16 @@ extension WebSocketManager {
                 // send error: it is another player's turn
                 return
             }
-            guard var playerTiles = room.playersTiles[userID.uuidString] else {
+            guard let playerTiles = room.playersTiles[userID.uuidString] else {
                 // send error
                 return
             }
             
-            // update room for next turn
+            // Moved to the next turn
             room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
             try await room.update(on: db)
             
+            // Notice player about his turn
             if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
                 sendMessage(
                     to: [playerConnection],
@@ -484,7 +485,7 @@ extension WebSocketManager {
                 )
             }
             
-            // notice other players about the turn
+            // Notice other players about the turn
             let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
             sendMessage(
                 to: otherConnections,
@@ -532,9 +533,9 @@ extension WebSocketManager {
                 // send error
                 return
             }
+            let gameService = WordGameService()
             let word = letters.buildWord(with: playerTiles, direction: direction)
-            let res = try await isValidWord(word, on: db)
-            guard try await isValidWord(word, on: db) else {
+            guard try await gameService.isValidWord(word, on: db) else {
                 // send error: word \(word) is invalid
                 return
             }
@@ -547,45 +548,20 @@ extension WebSocketManager {
             
             var board = room.board
             
-            // check words around new word
-            let aroundWords = findAllWords(
+            // Checking words around new word
+            let _ = gameService.findAllWords(
                 from: letters,
-                withTiles: playerTiles,
                 forWord: word,
                 direction: direction,
                 board: board
             )
             
-            // check
-            
-            // place the word on the board
-            var sameLetterCount = 0
-            for letter in letters {
-                let row = letter.position[0]
-                let col = letter.position[1]
-                let index = row * 15 + col
-                
-                let charAtIndex = board[board.index(board.startIndex, offsetBy: index)]
-                guard charAtIndex == "." || charAtIndex == Character(playerTiles[letter.tileIndex]) else {
-                    // send error: the tile [\(row);\(col)] is used by another letter
-                    return
-                }
-                
-                if charAtIndex == Character(playerTiles[letter.tileIndex]) {
-                    sameLetterCount += 1
-                }
-                
-                board = board.replacingCharacters(
-                    in: board.index(
-                        board.startIndex,
-                        offsetBy: index
-                    )...board.index(
-                        board.startIndex,
-                        offsetBy: index
-                    ),
-                    with: playerTiles[letter.tileIndex]
-                )
-            }
+            // Placing new word on the board
+            let sameLetterCount = try gameService.placeLetters(
+                from: letters,
+                withTiles: playerTiles,
+                board: &board
+            )
             if room.placedWords.count > 0 {
                 guard sameLetterCount > 0 else {
                     // send error: new word should cross any other word on the board
@@ -593,7 +569,7 @@ extension WebSocketManager {
                 }
             }
             
-            // giving new tiles to player
+            // Giving new tiles to player
             var tilesLeft = room.tilesLeft
             playerTiles = redistributeTiles(
                 to: userID,
@@ -602,28 +578,27 @@ extension WebSocketManager {
                 using: &tilesLeft
             )
             
-            // count points
-            let playerScore = calculateScore(
+            // Count player's score for new word
+            let playerScore = gameService.calculateScore(
                 letters: letters,
                 board: board,
                 boardLayout: BoardLayoutProvider.shared.layout,
                 tileWeights: LettersInfoProvider.shared.initialWeights()
             )
             
-            // recalculate leaderboard
+            // Recalculate leaderboard
             if let currentScore = room.leaderboard[userID.uuidString] {
                 room.leaderboard[userID.uuidString] = currentScore + playerScore
             }
             
-            // update room
+            // Update room in DB
             room.playersTiles[userID.uuidString] = playerTiles
-            // room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
             room.tilesLeft = tilesLeft
             room.placedWords.append(word)
             room.board = board
             try await room.update(on: db)
             
-            // notice player about his points for thiw word
+            // Notice player about his points for thiw word
             if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
                 sendMessage(
                     to: [playerConnection],
@@ -631,14 +606,13 @@ extension WebSocketManager {
                         event: .placedWord,
                         newWord: word,
                         scoredPoints: playerScore,
-                        // currentTurn: room.turnOrder[room.currentTurnIndex],
                         leaderboard: room.leaderboard,
                         playerTiles: playerTiles
                     )
                 )
             }
             
-            // notice other players about the turn
+            // Notice other players about the turn
             let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
             sendMessage(
                 to: otherConnections,
@@ -646,7 +620,6 @@ extension WebSocketManager {
                     event: .playerPlacedWord,
                     placedWordPlayerID: userID,
                     newWord: word,
-                    //currentTurn: room.turnOrder[room.currentTurnIndex],
                     leaderboard: room.leaderboard
                 )
             )
@@ -729,139 +702,6 @@ extension WebSocketManager {
         }
     }
 }
-
-// Need to be moved to some WordManager class
-extension WebSocketManager {
-    
-    func calculateScore(
-        letters: [LetterPlacement],
-        board: String,
-        boardLayout: [[BonusType]],
-        tileWeights: [String: Int]
-    ) -> Int {
-        var totalScore = 0
-        var wordMultiplier = 1
-        
-        for letterPlacement in letters {
-            let row = letterPlacement.position[0]
-            let col = letterPlacement.position[1]
-            let index = row * BoardLayoutProvider.shared.size + col
-            
-            let letter = board[board.index(board.startIndex, offsetBy: index)]
-            
-            guard let letterWeight = tileWeights[String(letter)] else {
-                continue
-            }
-            
-            let bonus = boardLayout[row][col]
-            
-            switch bonus {
-            case .doubleLetter:
-                totalScore += letterWeight * 2
-            case .tripleLetter:
-                totalScore += letterWeight * 3
-            case .doubleWord:
-                totalScore += letterWeight
-                wordMultiplier *= 2
-            case .tripleWord:
-                totalScore += letterWeight
-                wordMultiplier *= 3
-            case .none:
-                totalScore += letterWeight
-            }
-        }
-        
-        return totalScore * wordMultiplier
-    }
-    
-    private func findAllWords(
-        from letters: [LetterPlacement],
-        withTiles playerTiles: [String],
-        forWord mainWord: String,
-        direction: Direction,
-        board: String
-    ) -> [String] {
-        var words = [String]()
-
-        for letter in letters {
-            let row = letter.position[0]
-            let col = letter.position[1]
-            if direction == .horizontal {
-                let verticalWord = findWord(row: row, col: col, direction: .vertical, board: board)
-                if verticalWord.count > 1 {
-                    words.append(verticalWord)
-                }
-            } else {
-                let horizontalWord = findWord(row: row, col: col, direction: .horizontal, board: board)
-                if horizontalWord.count > 1 {
-                    words.append(horizontalWord)
-                }
-            }
-        }
-        
-        return words
-    }
-    
-    private func findWord(row: Int, col: Int, direction: Direction, board: String) -> String {
-        var word = ""
-        var r = row
-        var c = col
-        let boardSize = BoardLayoutProvider.shared.size
-
-        func charAt(index: Int) -> Character {
-            return board[board.index(board.startIndex, offsetBy: index)]
-        }
-
-        func index(row: Int, col: Int) -> Int {
-            return row * boardSize + col
-        }
-
-        while r >= 0, c >= 0, charAt(index: index(row: r, col: c)) != ".", charAt(index: index(row: r, col: c)) != " " {
-            if direction == .horizontal {
-                c -= 1
-            } else {
-                r -= 1
-            }
-        }
-
-        if direction == .horizontal {
-            c += 1
-        } else {
-            r += 1
-        }
-
-        while r < boardSize, c < boardSize, charAt(index: index(row: r, col: c)) != ".", charAt(index: index(row: r, col: c)) != " " {
-            word.append(charAt(index: index(row: r, col: c)))
-            if direction == .horizontal {
-                c += 1
-            } else {
-                r += 1
-            }
-        }
-
-        return word
-    }
-    
-    private func validateWords(_ words: [String], on db: Database) async throws {
-        for word in words {
-            guard try await isValidWord(word, on: db) else {
-                // send error: Invalid word \(word)
-                // throw Abort(.badRequest, reason: "Invalid word: \(word)")
-                return
-            }
-        }
-    }
-    
-    private func isValidWord(_ word: String, on db: Database) async throws -> Bool {
-        // facts: самая наикрутейшая возможная и доступная человечеству проверка валидности слова
-        let count = try await Word.query(on: db)
-            .filter(\.$word == word.uppercased())
-            .count()
-        
-        return count > 0
-    }
-}
-
 
 extension WebSocketManager {
     
