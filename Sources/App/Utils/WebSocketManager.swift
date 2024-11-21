@@ -521,8 +521,8 @@ extension WebSocketManager {
                 return
             }
             let word = letters.buildWord(with: playerTiles, direction: direction)
-            guard isValidWord(word) else {
-                // send error: word is invalid
+            guard try await isValidWord(word, on: db) else {
+                // send error: word \(word) is invalid
                 return
             }
             if room.placedWords.count == 0 {
@@ -695,20 +695,20 @@ extension WebSocketManager {
     ) -> Int {
         var totalScore = 0
         var wordMultiplier = 1
-
+        
         for letterPlacement in letters {
             let row = letterPlacement.position[0]
             let col = letterPlacement.position[1]
             let index = row * BoardLayoutProvider.shared.size + col
-
+            
             let letter = board[board.index(board.startIndex, offsetBy: index)]
-
+            
             guard let letterWeight = tileWeights[String(letter)] else {
                 continue
             }
-
+            
             let bonus = boardLayout[row][col]
-
+            
             switch bonus {
             case .doubleLetter:
                 totalScore += letterWeight * 2
@@ -724,10 +724,10 @@ extension WebSocketManager {
                 totalScore += letterWeight
             }
         }
-
+        
         return totalScore * wordMultiplier
     }
-
+    
     private func findAllWords(
         from letters: [LetterPlacement],
         with playerTiles: [String],
@@ -735,11 +735,11 @@ extension WebSocketManager {
         board: [[String]]
     ) -> [String] {
         var words = [String]()
-
+        
         // Основное слово
         let mainWord = letters.buildWord(with: playerTiles, direction: direction)
         words.append(mainWord)
-
+        
         // Проверяем пересечения
         for letter in letters {
             let row = letter.position[0]
@@ -758,15 +758,15 @@ extension WebSocketManager {
                 }
             }
         }
-
+        
         return words
     }
-
+    
     private func findWord(row: Int, col: Int, direction: Direction, board: [[String]]) -> String {
         var word = ""
         var r = row
         var c = col
-
+        
         // Идём назад, чтобы найти начало слова
         while r >= 0, c >= 0, board[r][c] != ".", board[r][c] != " " {
             if direction == Direction.horizontal {
@@ -775,14 +775,14 @@ extension WebSocketManager {
                 r -= 1
             }
         }
-
+        
         // Идём вперёд, чтобы собрать слово
         if direction == Direction.horizontal {
             c += 1
         } else {
             r += 1
         }
-
+        
         while r < 15, c < 15, board[r][c] != ".", board[r][c] != " " {
             word.append(board[r][c])
             if direction == Direction.horizontal {
@@ -791,22 +791,28 @@ extension WebSocketManager {
                 r += 1
             }
         }
-
+        
         return word
     }
     
-    private func validateWords(_ words: [String]) throws {
-       for word in words {
-           guard isValidWord(word) else {
-               throw Abort(.badRequest, reason: "Invalid word: \(word)")
-           }
-       }
-   }
-
-   private func isValidWord(_ word: String) -> Bool {
-       // самая наикрутейшая возможная и доступная человечеству проверка валидности слова
-       return true
-   }
+    private func validateWords(_ words: [String], on db: Database) async throws {
+        for word in words {
+            guard try await isValidWord(word, on: db) else {
+                // send error: Invalid word \(word)
+                // throw Abort(.badRequest, reason: "Invalid word: \(word)")
+                return
+            }
+        }
+    }
+    
+    private func isValidWord(_ word: String, on db: Database) async throws -> Bool {
+        // facts: самая наикрутейшая возможная и доступная человечеству проверка валидности слова
+        let count = try await Word.query(on: db)
+            .filter(\.$word == word.uppercased())
+            .count()
+        
+        return count > 0
+    }
 }
 
 
