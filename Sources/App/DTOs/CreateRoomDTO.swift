@@ -1,5 +1,7 @@
 import Vapor
 
 struct CreateRoomDTO: Content {
-    var isPrivate: Bool
+    let isPrivate: Bool
+    let timePerTurn: Int
+    let maxPlayers: Int
 }

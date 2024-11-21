@@ -1,9 +1,9 @@
 import Foundation
 
-enum BonusType: String {
-    case none
-    case doubleLetter
-    case tripleLetter
-    case doubleWord
-    case tripleWord
+enum BonusType: String, Codable {
+    case none = "EM"
+    case doubleLetter = "DL"
+    case tripleLetter = "TL"
+    case doubleWord = "DW"
+    case tripleWord = "TW"
 }

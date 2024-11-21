@@ -29,6 +29,7 @@ let package = Package(
             resources: [
                 .process("Resources/lettersInfo.json"),
                 .process("Resources/boardLayout.json"),
+                .process("Resources/words.txt")
             ],
             swiftSettings: swiftSettings
         ),
