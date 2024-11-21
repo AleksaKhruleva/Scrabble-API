@@ -81,12 +81,6 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
-            case .closeRoom:
-                await handleCloseRoom(
-                    socket: socket,
-                    roomID: incomingMessage.roomID,
-                    db: req.db
-                )
             case .startGame:
                 await handleStartGame(
                     socket: socket,
@@ -284,12 +278,12 @@ extension WebSocketManager {
                 // send error: no connections / current connection isn't connected to room
                 return
             }
-            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+            guard let userID = connections[roomID]?.first(where: { $0.socket === socket })?.userID else {
                 // send error: user not found for this connection
                 return
             }
-            guard let room = try await Room.find(roomID, on: db), room.$admin.id != userID else {
-                // send error: admin cannot leave the room
+            guard let room = try await Room.query(on: db).with(\.$players).filter(\.$id == roomID).first() else {
+                // send error: room not found
                 return
             }
             guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
@@ -297,20 +291,34 @@ extension WebSocketManager {
                 return
             }
             
-            try await db.transaction { db in
+            let initialGameStatus = room.gameStatus
+            let adminLeft = userID == room.$admin.id
+            
+            let remainingPlayers = try await db.transaction { db -> [RoomPlayer] in
                 try await RoomPlayer.query(on: db)
                     .filter(\.$room.$id == roomID)
                     .filter(\.$player.$id == userID)
                     .delete()
                 
-                let playerCount = try await RoomPlayer.query(on: db)
+                let players = try await RoomPlayer.query(on: db)
                     .filter(\.$room.$id == roomID)
-                    .count()
+                    .all()
                 
-                if room.gameStatus == GameStatus.ready.rawValue && playerCount < room.maxPlayers {
+                if room.gameStatus == GameStatus.ready.rawValue && players.count < room.maxPlayers {
                     room.gameStatus = GameStatus.waiting.rawValue
+                }
+                
+                if adminLeft, let newAdmin = players.first {
+                    room.$admin.id = newAdmin.$player.id
+                }
+                
+                if players.isEmpty {
+                    try await room.delete(on: db)
+                } else {
                     try await room.update(on: db)
                 }
+                
+                return players
             }
             
             if let leavingPlayerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
@@ -320,58 +328,38 @@ extension WebSocketManager {
                 )
                 try await leavingPlayerConnection.socket.close()
                 removeConnection(for: leavingPlayerConnection.socket, roomID: roomID)
-                sendMessage(
-                    to: connections[roomID],
-                    outcomingMessage: OutcomingMessage(
-                        event: .playerLeftRoom,
-                        leftPlayerID: userID
-                    )
+            }
+            
+            if remainingPlayers.isEmpty {
+                if let roomConnections = connections[roomID] {
+                    for connection in roomConnections {
+                        try await connection.socket.close()
+                    }
+                    connections[roomID] = nil
+                }
+            } else {
+                let message = adminLeft
+                ? OutcomingMessage(
+                    event: .playerLeftRoom,
+                    leftPlayerID: userID,
+                    newAdminID: room.$admin.id
                 )
+                : OutcomingMessage(
+                    event: .playerLeftRoom,
+                    leftPlayerID: userID
+                )
+                
+                sendMessage(to: connections[roomID], outcomingMessage: message)
+                
+                if room.gameStatus != initialGameStatus, let adminConnection = connections[roomID]?.first(where: { $0.userID == room.$admin.id }) {
+                    sendMessage(
+                        to: [adminConnection],
+                        outcomingMessage: OutcomingMessage(event: .roomWaiting)
+                    )
+                }
             }
         } catch {
             // send error
-        }
-    }
-    
-    private func handleCloseRoom(
-        socket: WebSocket,
-        roomID: UUID,
-        db: Database
-    ) async {
-        do {
-            guard isSocketConnected(to: roomID, socket: socket) else {
-                // send error: no connections / current connection isn't connected to room
-                return
-            }
-            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
-                // send error: user not found for this connection
-                return
-            }
-            guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
-                // send error: only the admin can close the room
-                return
-            }
-            guard room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue else {
-                // send error: cannot close room because game status is invalid
-                return
-            }
-            
-            try await room.delete(on: db)
-            
-            sendMessage(
-                to: connections[roomID],
-                outcomingMessage: OutcomingMessage(event: .roomClosed)
-            )
-            
-            if let roomConnections = connections[roomID] {
-                for connection in roomConnections {
-                    try await connection.socket.close()
-                }
-            }
-            
-            connections[roomID] = nil
-        } catch {
-            // senf error
         }
     }
     
@@ -581,27 +569,24 @@ extension WebSocketManager {
                 let roomPlayers = try await room.$players.query(on: db).with(\.$player).all()
                 let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
                 
-                var message: OutcomingMessage
                 let leaderboardForClient = convertLeaderboardToUsernameFormat(
                     leaderboard: room.leaderboard,
                     roomPlayers: roomPlayersMap
                 )
-                if adminLeft {
-                    message = OutcomingMessage(
-                        event: .playerLeftGame,
-                        leftPlayerID: userID,
-                        currentTurn: room.turnOrder[room.currentTurnIndex],
-                        leaderboard: leaderboardForClient,
-                        newAdminID: room.$admin.id
-                    )
-                } else {
-                    message = OutcomingMessage(
-                        event: .playerLeftGame,
-                        leftPlayerID: userID,
-                        currentTurn: room.turnOrder[room.currentTurnIndex],
-                        leaderboard: leaderboardForClient
-                    )
-                }
+                let message = adminLeft
+                ? OutcomingMessage(
+                    event: .playerLeftGame,
+                    leftPlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    leaderboard: leaderboardForClient,
+                    newAdminID: room.$admin.id
+                )
+                : OutcomingMessage(
+                    event: .playerLeftGame,
+                    leftPlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    leaderboard: leaderboardForClient
+                )
                 
                 sendMessage(to: connections[roomID], outcomingMessage: message)
             }
