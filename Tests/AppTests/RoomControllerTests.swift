@@ -31,7 +31,7 @@ struct RoomControllerTests {
             let token = try Token.generate(for: admin)
             try await token.save(on: app.db)
             
-            let createRoomDTO = CreateRoomDTO(isPrivate: true)
+            let createRoomDTO = CreateRoomDTO(isPrivate: true, timePerTurn: 0, maxPlayers: 2)
             
             try await app.test(.POST, "rooms/create", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
@@ -55,10 +55,16 @@ struct RoomControllerTests {
             let token = try Token.generate(for: admin)
             try await token.save(on: app.db)
             
-            let room = Room(inviteCode: "111111", isPrivate: false, adminID: try admin.requireID())
+            let room = Room(
+                inviteCode: "111111",
+                isPrivate: false,
+                adminID: try admin.requireID(),
+                timePerTurn: 0,
+                maxPlayers: 2
+            )
             try await room.save(on: app.db)
             
-            let createRoomDTO = CreateRoomDTO(isPrivate: true)
+            let createRoomDTO = CreateRoomDTO(isPrivate: true, timePerTurn: 0, maxPlayers: 2)
             
             try await app.test(.POST, "rooms/create", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
@@ -81,7 +87,13 @@ struct RoomControllerTests {
             try await user.save(on: app.db)
             try await admin.save(on: app.db)
             
-            let room = Room(inviteCode: "111111", isPrivate: false, adminID: try admin.requireID())
+            let room = Room(
+                inviteCode: "111111",
+                isPrivate: false,
+                adminID: try admin.requireID(),
+                timePerTurn: 0,
+                maxPlayers: 2
+            )
             try await room.save(on: app.db)
             
             let token = try Token.generate(for: user)
@@ -89,7 +101,7 @@ struct RoomControllerTests {
             
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
-                try req.content.encode(JoinRoomDTO())
+                try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .ok)
                 
@@ -108,7 +120,13 @@ struct RoomControllerTests {
             try await user.save(on: app.db)
             try await admin.save(on: app.db)
             
-            let room = Room(inviteCode: "111111", isPrivate: true, adminID: try admin.requireID())
+            let room = Room(
+                inviteCode: "111111",
+                isPrivate: true,
+                adminID: try admin.requireID(),
+                timePerTurn: 0,
+                maxPlayers: 2
+            )
             try await room.save(on: app.db)
             
             let token = try Token.generate(for: user)
@@ -116,7 +134,7 @@ struct RoomControllerTests {
             
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
-                try req.content.encode(JoinRoomDTO())
+                try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .notFound)
                 
@@ -138,7 +156,7 @@ struct RoomControllerTests {
             
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
-                try req.content.encode(JoinRoomDTO())
+                try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .notFound)
             })
@@ -154,7 +172,13 @@ struct RoomControllerTests {
             try await user.save(on: app.db)
             try await admin.save(on: app.db)
 
-            let room = Room(inviteCode: "111111", isPrivate: true, adminID: try admin.requireID())
+            let room = Room(
+                inviteCode: "111111",
+                isPrivate: true,
+                adminID: try admin.requireID(),
+                timePerTurn: 0,
+                maxPlayers: 2
+            )
             try await room.save(on: app.db)
 
             let token = try Token.generate(for: user)
@@ -210,7 +234,7 @@ struct RoomControllerTests {
             let token = try Token.generate(for: user)
             try await token.save(on: app.db)
 
-            let joinRoomDTO = JoinRoomDTO()
+            let joinRoomDTO = JoinRoomDTO(inviteCode: nil)
 
             try await app.test(.POST, "rooms/joinByInviteCode", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
