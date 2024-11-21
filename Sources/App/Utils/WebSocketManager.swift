@@ -99,13 +99,19 @@ extension WebSocketManager {
                     db: req.db
                 )
             case .makeMove:
+                await handleEndTurn(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .placeWord:
                 guard
                     let direction = incomingMessage.direction,
                     let letters = incomingMessage.letters else {
                     // send error: no direction or letters
                     return
                 }
-                await handleMakeMove(
+                await handlePlaceWord(
                     socket: socket,
                     roomID: incomingMessage.roomID,
                     direction: direction,
@@ -488,7 +494,70 @@ extension WebSocketManager {
         }
     }
     
-    private func handleMakeMove(
+    private func handleEndTurn(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: skip turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            guard var playerTiles = room.playersTiles[userID.uuidString] else {
+                // send error
+                return
+            }
+            
+            // update room for next turn
+            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            try await room.update(on: db)
+            
+            if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [playerConnection],
+                    outcomingMessage: OutcomingMessage(
+                        event: .madeMove,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        leaderboard: room.leaderboard,
+                        playerTiles: playerTiles
+                    )
+                )
+            }
+            
+            // notice other players about the turn
+            let otherConnections = connections[roomID]?.filter({ $0.socket !== socket })
+            sendMessage(
+                to: otherConnections,
+                outcomingMessage: OutcomingMessage(
+                    event: .playerPlacedWord,
+                    madeMovePlayerID: userID,
+                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    leaderboard: room.leaderboard
+                )
+            )
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handlePlaceWord(
         socket: WebSocket,
         roomID: UUID,
         direction: Direction,
@@ -604,7 +673,7 @@ extension WebSocketManager {
             
             // update room
             room.playersTiles[userID.uuidString] = playerTiles
-            room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
+            // room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
             room.tilesLeft = tilesLeft
             room.placedWords.append(word)
             room.board = board
@@ -615,10 +684,10 @@ extension WebSocketManager {
                 sendMessage(
                     to: [playerConnection],
                     outcomingMessage: OutcomingMessage(
-                        event: .madeMove,
+                        event: .placedWord,
                         newWord: word,
                         scoredPoints: playerScore,
-                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        // currentTurn: room.turnOrder[room.currentTurnIndex],
                         leaderboard: room.leaderboard,
                         playerTiles: playerTiles
                     )
@@ -630,10 +699,10 @@ extension WebSocketManager {
             sendMessage(
                 to: otherConnections,
                 outcomingMessage: OutcomingMessage(
-                    event: .playerMadeMove,
-                    madeMovePlayerID: userID,
+                    event: .playerPlacedWord,
+                    placedWordPlayerID: userID,
                     newWord: word,
-                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    //currentTurn: room.turnOrder[room.currentTurnIndex],
                     leaderboard: room.leaderboard
                 )
             )
