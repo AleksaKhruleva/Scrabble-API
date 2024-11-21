@@ -13,8 +13,11 @@ struct OutcomingMessage: Codable {
     let scoredPoints: Int?
     let boardLayout: [[BonusType]]?
     let currentTurn: UUID?
-    let leaderboard: [String: Int]?
     let playerTiles: [String]?
+    let newAdminID: UUID?
+    let winnerID: UUID?
+    let reaction: String?
+    let senderID: UUID?
     
     init(
         event: RoomEvent,
@@ -29,8 +32,11 @@ struct OutcomingMessage: Codable {
         scoredPoints: Int? = nil,
         boardLayout: [[BonusType]]? = nil,
         currentTurn: UUID? = nil,
-        leaderboard: [String: Int]? = nil,
-        playerTiles: [String]? = nil
+        playerTiles: [String]? = nil,
+        newAdminID: UUID? = nil,
+        winnerID: UUID? = nil,
+        reaction: String? = nil,
+        senderID: UUID? = nil
     ) {
         self.event = event
         self.newPlayerInfo = newPlayerInfo
@@ -43,8 +49,11 @@ struct OutcomingMessage: Codable {
         self.scoredPoints = scoredPoints
         self.boardLayout = boardLayout
         self.currentTurn = currentTurn
-        self.leaderboard = leaderboard
         self.playerTiles = playerTiles
         self.newRoomPrivacy = newRoomPrivacy
+        self.newAdminID = newAdminID
+        self.winnerID = winnerID
+        self.reaction = reaction
+        self.senderID = senderID
     }
 }

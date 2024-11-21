@@ -89,14 +89,21 @@ extension Room {
         self.placedWords = []
         self.currentSkippedTurns = 0
     }
-    
-    func toDTO() -> RoomDTO {
-        RoomDTO(
+  
+    func toDTO(for userID: UUID) -> RoomDTO {
+        let playersInfo: [String: String] = players.reduce(into: [:]) { result, roomPlayer in
+            let playerID = roomPlayer.$player.id.uuidString
+            let username = roomPlayer.player.username
+            result[playerID] = username
+        }
+        
+        return RoomDTO(
             id: id,
+            currentUserID: userID,
             inviteCode: inviteCode,
             isPrivate: isPrivate,
             adminID: $admin.id,
-            players: players.map { $0.$player.id },
+            players: playersInfo,
             timePerTurn: timePerTurn,
             maxPlayers: maxPlayers
         )

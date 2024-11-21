@@ -7,4 +7,5 @@ struct IncomingMessage: Codable {
     let changingTiles: [Int]?
     let direction: Direction?
     let letters: [LetterPlacement]?
+    let reaction: String?
 }
