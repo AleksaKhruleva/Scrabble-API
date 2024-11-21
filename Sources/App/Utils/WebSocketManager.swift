@@ -412,16 +412,10 @@ extension WebSocketManager {
             for playerID in turnOrder {
                 let playerTiles = playersTiles[playerID.uuidString]
                 
-                let leaderboardForClient = convertLeaderboardToUsernameFormat(
-                    leaderboard: leaderboard,
-                    roomPlayers: roomPlayersMap
-                )
-                
                 let message = OutcomingMessage(
                     event: .gameStarted,
                     boardLayout: boardLayout,
                     currentTurn: turnOrder[room.currentTurnIndex],
-                    leaderboard: leaderboardForClient,
                     playerTiles: playerTiles
                 )
                 
@@ -569,23 +563,17 @@ extension WebSocketManager {
                 let roomPlayers = try await room.$players.query(on: db).with(\.$player).all()
                 let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
                 
-                let leaderboardForClient = convertLeaderboardToUsernameFormat(
-                    leaderboard: room.leaderboard,
-                    roomPlayers: roomPlayersMap
-                )
                 let message = adminLeft
                 ? OutcomingMessage(
                     event: .playerLeftGame,
                     leftPlayerID: userID,
                     currentTurn: room.turnOrder[room.currentTurnIndex],
-                    leaderboard: leaderboardForClient,
                     newAdminID: room.$admin.id
                 )
                 : OutcomingMessage(
                     event: .playerLeftGame,
                     leftPlayerID: userID,
-                    currentTurn: room.turnOrder[room.currentTurnIndex],
-                    leaderboard: leaderboardForClient
+                    currentTurn: room.turnOrder[room.currentTurnIndex]
                 )
                 
                 sendMessage(to: connections[roomID], outcomingMessage: message)
@@ -676,23 +664,6 @@ extension WebSocketManager {
         } catch {
             print("Error encoding message: \(error)")
             return nil
-        }
-    }
-    
-    private func convertLeaderboardToUsernameFormat(
-        leaderboard: [String: Int],
-        roomPlayers: Any
-    ) -> [String: Int] {
-        leaderboard.reduce(into: [String: Int]()) { result, entry in
-            if let uuid = UUID(uuidString: entry.key) {
-                if let playersMap = roomPlayers as? [UUID: RoomPlayer],
-                   let username = playersMap[uuid]?.player.username {
-                    result[username] = entry.value
-                } else if let playersArray = roomPlayers as? [RoomPlayer],
-                          let player = playersArray.first(where: { $0.$player.id == uuid }) {
-                    result[player.player.username] = entry.value
-                }
-            }
         }
     }
 }
