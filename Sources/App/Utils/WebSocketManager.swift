@@ -222,6 +222,14 @@ extension WebSocketManager {
                 // send error: cannot kick player because game status is invalid
                 return
             }
+            guard kickPlayerID != userID else {
+                // send error: admin cannot kick themselves
+                return
+            }
+            guard connections[roomID]?.contains(where: { $0.userID == kickPlayerID }) == true else {
+                // send error: player to kick is not part of the room
+                return
+            }
             
             let initialGameStatus = room.gameStatus
             
