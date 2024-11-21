@@ -50,6 +50,9 @@ final class Room: Model, @unchecked Sendable {
     @Field(key: "players_tiles")
     var playersTiles: [String: [String]]
     
+    @Field(key: "current_skipped_turns")
+    var currentSkippedTurns: Int
+    
     @Field(key: "placed_words")
     var placedWords: [String]
     
@@ -68,19 +71,25 @@ final class Room: Model, @unchecked Sendable {
         self.isPrivate = isPrivate
         self.$admin.id = adminID
         self.gameStatus = GameStatus.waiting.rawValue
+        self.timePerTurn = timePerTurn
+        self.maxPlayers = maxPlayers
+        reset()
+    }
+}
+
+extension Room {
+    
+    func reset() {
         self.leaderboard = [:]
         self.tilesLeft = [:]
         self.board = ""
         self.turnOrder = []
         self.currentTurnIndex = 0
-        self.timePerTurn = timePerTurn
-        self.maxPlayers = maxPlayers
         self.playersTiles = [:]
         self.placedWords = []
+        self.currentSkippedTurns = 0
     }
-}
-
-extension Room {
+    
     func toDTO() -> RoomDTO {
         RoomDTO(
             id: id,

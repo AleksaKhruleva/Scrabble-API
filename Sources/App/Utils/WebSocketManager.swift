@@ -92,10 +92,24 @@ extension WebSocketManager {
                     changingTiles: changingTiles,
                     db: req.db
                 )
+            case .suggestToEndGame:
+                await handleEndGameSuggestion(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .skipTurn:
+                await handleEndTurn(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    emptyTurn: true,
+                    db: req.db
+                )
             case .endTurn:
                 await handleEndTurn(
                     socket: socket,
                     roomID: incomingMessage.roomID,
+                    emptyTurn: false,
                     db: req.db
                 )
             case .placeWord:
@@ -437,7 +451,7 @@ extension WebSocketManager {
         }
     }
     
-    private func handleEndTurn(
+    private func handleEndGameSuggestion(
         socket: WebSocket,
         roomID: UUID,
         db: Database
@@ -463,6 +477,65 @@ extension WebSocketManager {
                 // send error: it is another player's turn
                 return
             }
+            guard room.currentSkippedTurns >= 6 else {
+                // send error: game can't be ended yet
+                return
+            }
+            
+            // Changing gameStatus to .waiting
+            room.gameStatus = GameStatus.waiting.rawValue
+            
+            // Reseting all room statistics
+            room.reset()
+            try await room.update(on: db)
+            
+            // Noticing players about end of the game because of 6 empty turns
+            if let playersConnections = connections[roomID] {
+                sendMessage(
+                    to: playersConnections,
+                    outcomingMessage: OutcomingMessage(
+                        event: .gameEndedMuchEmptyTurns
+                    )
+                )
+            }
+        } catch {
+            // send error
+        }
+    }
+    
+    private func handleEndTurn(
+        socket: WebSocket,
+        roomID: UUID,
+        emptyTurn: Bool,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.filter({ $0.socket === socket }).first?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.find(roomID, on: db) else {
+                // send error: only the admin can close the room
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue else {
+                // send error: ending turn is availible only for ongoing game
+                return
+            }
+            guard room.turnOrder[room.currentTurnIndex] == userID else {
+                // send error: it is another player's turn
+                return
+            }
+            if emptyTurn {
+                room.currentSkippedTurns += 1
+            } else {
+                room.currentSkippedTurns = 0
+            }
+            try await room.update(on: db)
             guard let playerTiles = room.playersTiles[userID.uuidString] else {
                 // send error
                 return
@@ -598,6 +671,24 @@ extension WebSocketManager {
             room.board = board
             try await room.update(on: db)
             
+            if playerTiles.isEmpty && room.tilesLeft.keys.isEmpty {
+                
+                // Notice winner about his win
+                
+                
+                // Notice other players about end of the game
+                
+                
+                // Change gameStatus to .waiting
+                room.gameStatus = GameStatus.waiting.rawValue
+                
+                // Reset all room statistics
+                room.reset()
+                try await room.update(on: db)
+                
+                return
+            }
+            
             // Notice player about his points for thiw word
             if let playerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
                 sendMessage(
@@ -626,6 +717,14 @@ extension WebSocketManager {
         } catch {
             // send error
         }
+    }
+    
+    private func handleWin(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) {
+        
     }
     
     private func handleStartGame(
@@ -725,9 +824,20 @@ extension WebSocketManager {
         using tiles: inout [String: Int]
     ) -> [String] {
         var newPlayerTiles = playerTiles
+        var remainingChangingTiles = changingTiles
+
+        let totalTilesAvailable = tiles.values.reduce(0, +)
+        if totalTilesAvailable < changingTiles.count {
+            remainingChangingTiles = Array(changingTiles.prefix(totalTilesAvailable))
+        }
         
-        for index in changingTiles {
+        for index in Array(changingTiles.suffix(changingTiles.count - remainingChangingTiles.count)) {
+            newPlayerTiles[index] = ""
+        }
+        
+        for index in remainingChangingTiles {
             guard let randomLetter = tiles.keys.randomElement() else { break }
+            
             newPlayerTiles[index] = randomLetter
             if let count = tiles[randomLetter], count > 1 {
                 tiles[randomLetter] = count - 1
@@ -735,8 +845,8 @@ extension WebSocketManager {
                 tiles.removeValue(forKey: randomLetter)
             }
         }
-        
-        return newPlayerTiles
+
+        return newPlayerTiles.filter { !$0.isEmpty }
     }
     
     private func distributeTiles(to players: [UUID], using tiles: inout [String: Int]) -> [String: [String]] {

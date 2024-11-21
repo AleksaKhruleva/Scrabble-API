@@ -24,6 +24,7 @@ struct CreateRoomMigration: AsyncMigration {
         
             .field("players_tiles", .json, .required)
             .field("placed_words", .array(of: .string), .required)
+            .field("current_skipped_turns", .int, .required)
         
             .unique(on: "invite_code")
             .create()

@@ -23,5 +23,7 @@ enum RoomEvent: String, Codable {
     
     case roomClosed = "room_closed"
     
+    case gameEndedMuchEmptyTurns = "game_ended_much_empty_turns"
+    
     case gameStarted = "game_started"
 }
