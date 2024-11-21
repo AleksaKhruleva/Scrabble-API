@@ -105,6 +105,17 @@ extension WebSocketManager {
                     roomID: incomingMessage.roomID,
                     db: req.db
                 )
+            case .sendReaction:
+                guard let reaction = incomingMessage.reaction, reaction.count <= 15 else {
+                    // send error: no reaction or it is invalid
+                    return
+                }
+                await handleSendReaction(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    reaction: reaction,
+                    db: req.db
+                )
             }
         } catch {
             // send error
@@ -505,6 +516,31 @@ extension WebSocketManager {
         } catch {
             // send error
         }
+    }
+    
+    private func handleSendReaction(
+        socket: WebSocket,
+        roomID: UUID,
+        reaction: String,
+        db: Database
+    ) async {
+        guard isSocketConnected(to: roomID, socket: socket) else {
+            // send error: no connections / current connection isn't connected to room
+            return
+        }
+        guard let userID = connections[roomID]?.first(where: { $0.socket === socket })?.userID else {
+            // send error: user not found for this connection
+            return
+        }
+        
+        sendMessage(
+            to: connections[roomID],
+            outcomingMessage: OutcomingMessage(
+                event: .reactionSent,
+                reaction: reaction,
+                senderID: userID
+            )
+        )
     }
     
     private func handleLeaveGame(

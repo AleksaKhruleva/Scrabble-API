@@ -4,6 +4,9 @@ enum RoomEvent: String, Codable {
     case joinedRoom = "joined_room"
     case playerJoined = "player_joined"
     
+    case leftRoom = "left_room"
+    case playerLeftRoom = "player_left_room"
+    
     case roomReady = "room_ready"
     case roomWaiting = "room_waiting"
     case roomWasMadePrivate = "room_was_made_private"
@@ -12,9 +15,6 @@ enum RoomEvent: String, Codable {
     case kickedByAdmin = "kicked_by_admin"
     case playerKicked = "player_kicked"
     
-    case leftRoom = "left_room"
-    case playerLeftRoom = "player_left_room"
-    
     case leftGame = "left_game"
     case playerLeftGame = "player_left_game"
     
@@ -22,4 +22,6 @@ enum RoomEvent: String, Codable {
     case gamePaused = "game_paused"
     case gameResumed = "game_resumed"
     case gameEnded = "game_ended"
+    
+    case reactionSent = "reaction_sent"
 }
