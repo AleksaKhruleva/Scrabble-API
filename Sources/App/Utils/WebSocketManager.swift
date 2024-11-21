@@ -561,7 +561,7 @@ extension WebSocketManager {
                 using: &tilesLeft
             )
             
-            // count points, update leaderboard
+            // count points
             let playerScore = calculateScore(
                 letters: letters,
                 board: board,
@@ -569,13 +569,17 @@ extension WebSocketManager {
                 tileWeights: LettersInfoProvider.shared.initialWeights()
             )
             
+            // recalculate leaderboard
+            if let currentScore = room.leaderboard[userID.uuidString] {
+                room.leaderboard[userID.uuidString] = currentScore + playerScore
+            }
+            
             // update room
             room.playersTiles[userID.uuidString] = playerTiles
             room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
             room.tilesLeft = tilesLeft
             room.placedWords.append(word)
             room.board = board
-            // update leaderboard, etc ...
             try await room.update(on: db)
             
             // notice player about his points for thiw word
@@ -587,6 +591,7 @@ extension WebSocketManager {
                         newWord: word,
                         scoredPoints: playerScore,
                         currentTurn: room.turnOrder[room.currentTurnIndex],
+                        leaderboard: room.leaderboard,
                         playerTiles: playerTiles
                     )
                 )
@@ -600,7 +605,8 @@ extension WebSocketManager {
                     event: .playerMadeMove,
                     madeMovePlayerID: userID,
                     newWord: word,
-                    currentTurn: room.turnOrder[room.currentTurnIndex]
+                    currentTurn: room.turnOrder[room.currentTurnIndex],
+                    leaderboard: room.leaderboard
                 )
             )
         } catch {
@@ -626,7 +632,8 @@ extension WebSocketManager {
                 // send error: not admin
                 return
             }
-            guard room.gameStatus == GameStatus.ready.rawValue else {
+            guard room.gameStatus == GameStatus.ready.rawValue ||
+            room.gameStatus == GameStatus.waiting.rawValue else {
                 // send error: cannot start because game status is invalid
                 return
             }
@@ -642,9 +649,7 @@ extension WebSocketManager {
             
             var leaderboard: [String: Int] = [:]
             for playerID in turnOrder {
-                if let roomPlayer = roomPlayersMap[playerID] {
-                    leaderboard[roomPlayer.player.username] = 0
-                }
+                leaderboard[playerID.uuidString] = 0
             }
             
             var tilesLeft = LettersInfoProvider.shared.initialQuantities()
@@ -736,22 +741,18 @@ extension WebSocketManager {
     ) -> [String] {
         var words = [String]()
         
-        // Основное слово
         let mainWord = letters.buildWord(with: playerTiles, direction: direction)
         words.append(mainWord)
         
-        // Проверяем пересечения
         for letter in letters {
             let row = letter.position[0]
             let col = letter.position[1]
             if direction == Direction.horizontal {
-                // Проверяем вертикальное слово
                 let verticalWord = findWord(row: row, col: col, direction: Direction.vertical, board: board)
                 if verticalWord.count > 1 {
                     words.append(verticalWord)
                 }
             } else {
-                // Проверяем горизонтальное слово
                 let horizontalWord = findWord(row: row, col: col, direction: Direction.horizontal, board: board)
                 if horizontalWord.count > 1 {
                     words.append(horizontalWord)
@@ -767,7 +768,6 @@ extension WebSocketManager {
         var r = row
         var c = col
         
-        // Идём назад, чтобы найти начало слова
         while r >= 0, c >= 0, board[r][c] != ".", board[r][c] != " " {
             if direction == Direction.horizontal {
                 c -= 1
@@ -776,7 +776,6 @@ extension WebSocketManager {
             }
         }
         
-        // Идём вперёд, чтобы собрать слово
         if direction == Direction.horizontal {
             c += 1
         } else {
