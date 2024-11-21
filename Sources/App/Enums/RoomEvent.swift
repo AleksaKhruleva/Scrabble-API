@@ -13,9 +13,13 @@ enum RoomEvent: String, Codable {
     case playerKicked = "player_kicked"
     
     case leftRoom = "left_room"
-    case playerLeft = "player_left"
+    case playerLeftRoom = "player_left_room"
+    
+    case leftGame = "left_game"
+    case playerLeftGame = "player_left_game"
     
     case gameStarted = "game_started"
     case gamePaused = "game_paused"
     case gameResumed = "game_resumed"
+    case gameEnded = "game_ended"
 }

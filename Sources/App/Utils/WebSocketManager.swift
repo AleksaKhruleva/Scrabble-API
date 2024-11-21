@@ -11,9 +11,15 @@ final class WebSocketManager: @unchecked Sendable {
     func removeConnection(for socket: WebSocket, roomID: UUID? = nil) {
         if let roomID {
             connections[roomID]?.removeAll { $0.socket === socket }
+            if connections[roomID]?.isEmpty == true {
+                connections.removeValue(forKey: roomID)
+            }
         } else {
             for roomID in connections.keys {
                 connections[roomID]?.removeAll { $0.socket === socket }
+                if connections[roomID]?.isEmpty == true {
+                    connections.removeValue(forKey: roomID)
+                }
             }
         }
     }
@@ -95,6 +101,12 @@ extension WebSocketManager {
                 )
             case .resumeGame:
                 await handleResumeGame(
+                    socket: socket,
+                    roomID: incomingMessage.roomID,
+                    db: req.db
+                )
+            case .leaveGame:
+                await handleLeaveGame(
                     socket: socket,
                     roomID: incomingMessage.roomID,
                     db: req.db
@@ -217,7 +229,7 @@ extension WebSocketManager {
                 return
             }
             
-            var initialGameStatus = room.gameStatus
+            let initialGameStatus = room.gameStatus
             
             try await db.transaction { db in
                 try await RoomPlayer.query(on: db)
@@ -311,7 +323,7 @@ extension WebSocketManager {
                 sendMessage(
                     to: connections[roomID],
                     outcomingMessage: OutcomingMessage(
-                        event: .playerLeft,
+                        event: .playerLeftRoom,
                         leftPlayerID: userID
                     )
                 )
@@ -394,23 +406,16 @@ extension WebSocketManager {
             let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
             
             let turnOrder = roomPlayersMap.keys.shuffled()
-            
-            var leaderboard: [String: Int] = [:]
-            for playerID in turnOrder {
-                if let roomPlayer = roomPlayersMap[playerID] {
-                    leaderboard[roomPlayer.player.username] = 0
-                }
-            }
+            let leaderboard = Dictionary(uniqueKeysWithValues: turnOrder.map { ($0.uuidString, 0) })
             
             var tilesLeft = LettersInfoProvider.shared.initialQuantities()
             let playersTiles = distributeTiles(to: turnOrder, using: &tilesLeft)
             
-            let leaderboardCopy = leaderboard
             let tilesLeftCopy = tilesLeft
             
             room.board = boardString
             room.turnOrder = turnOrder
-            room.leaderboard = leaderboardCopy
+            room.leaderboard = leaderboard
             room.tilesLeft = tilesLeftCopy
             room.playersTiles = playersTiles
             room.gameStatus = GameStatus.started.rawValue
@@ -419,11 +424,16 @@ extension WebSocketManager {
             for playerID in turnOrder {
                 let playerTiles = playersTiles[playerID.uuidString]
                 
+                let leaderboardForClient = convertLeaderboardToUsernameFormat(
+                    leaderboard: leaderboard,
+                    roomPlayers: roomPlayersMap
+                )
+                
                 let message = OutcomingMessage(
                     event: .gameStarted,
                     boardLayout: boardLayout,
                     currentTurn: turnOrder[room.currentTurnIndex],
-                    leaderboard: leaderboardCopy,
+                    leaderboard: leaderboardForClient,
                     playerTiles: playerTiles
                 )
                 
@@ -506,6 +516,122 @@ extension WebSocketManager {
             // send error
         }
     }
+    
+    private func handleLeaveGame(
+        socket: WebSocket,
+        roomID: UUID,
+        db: Database
+    ) async {
+        do {
+            guard isSocketConnected(to: roomID, socket: socket) else {
+                // send error: no connections / current connection isn't connected to room
+                return
+            }
+            guard let userID = connections[roomID]?.first(where: { $0.socket === socket })?.userID else {
+                // send error: user not found for this connection
+                return
+            }
+            guard let room = try await Room.query(on: db).with(\.$players).with(\.$admin).filter(\.$id == roomID).first() else {
+                return
+            }
+            guard room.gameStatus == GameStatus.started.rawValue || room.gameStatus == GameStatus.paused.rawValue else {
+                // send error: cannot leave because game status is invalid
+                return
+            }
+            
+            let adminLeft = userID == room.$admin.id
+            
+            let remainingPlayers = try await db.transaction { db -> [RoomPlayer] in
+                try await RoomPlayer.query(on: db)
+                    .filter(\.$room.$id == roomID)
+                    .filter(\.$player.$id == userID)
+                    .delete()
+                
+                if let playerTiles = room.playersTiles[userID.uuidString] {
+                    for tile in playerTiles {
+                        room.tilesLeft[tile, default: 0] += 1
+                    }
+                    room.playersTiles.removeValue(forKey: userID.uuidString)
+                }
+                
+                room.leaderboard.removeValue(forKey: userID.uuidString)
+                room.turnOrder.removeAll(where: { $0 == userID })
+                
+                let players = try await RoomPlayer.query(on: db).filter(\.$room.$id == roomID).all()
+                
+                if adminLeft, let newAdmin = players.first {
+                    room.$admin.id = newAdmin.$player.id
+                }
+                if !players.isEmpty {
+                    room.currentTurnIndex = room.currentTurnIndex % players.count
+                }
+                
+                try await room.update(on: db)
+                return players
+            }
+            
+            if let leavingPlayerConnection = connections[roomID]?.first(where: { $0.userID == userID }) {
+                sendMessage(
+                    to: [leavingPlayerConnection],
+                    outcomingMessage: OutcomingMessage(event: .leftGame)
+                )
+                try await leavingPlayerConnection.socket.close()
+                removeConnection(for: leavingPlayerConnection.socket, roomID: roomID)
+                
+                let roomPlayers = try await room.$players.query(on: db).with(\.$player).all()
+                let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
+                
+                var message: OutcomingMessage
+                let leaderboardForClient = convertLeaderboardToUsernameFormat(
+                    leaderboard: room.leaderboard,
+                    roomPlayers: roomPlayersMap
+                )
+                if adminLeft {
+                    message = OutcomingMessage(
+                        event: .playerLeftGame,
+                        leftPlayerID: userID,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        leaderboard: leaderboardForClient,
+                        newAdminID: room.$admin.id
+                    )
+                } else {
+                    message = OutcomingMessage(
+                        event: .playerLeftGame,
+                        leftPlayerID: userID,
+                        currentTurn: room.turnOrder[room.currentTurnIndex],
+                        leaderboard: leaderboardForClient
+                    )
+                }
+                
+                sendMessage(to: connections[roomID], outcomingMessage: message)
+            }
+            
+            if remainingPlayers.count == 1, let winner = remainingPlayers.first {
+                try await resetRoomState(for: room, db: db)
+                let winnerID = winner.$player.id
+                
+                sendMessage(
+                    to: connections[roomID],
+                    outcomingMessage: OutcomingMessage(
+                        event: .gameEnded,
+                        winnerID: winnerID
+                    )
+                )
+            }
+            
+            if remainingPlayers.count == 0 {
+                try await room.delete(on: db)
+                if let roomConnections = connections[roomID] {
+                    for connection in roomConnections {
+                        try await connection.socket.close()
+                    }
+                }
+                connections[roomID] = nil
+            }
+        } catch {
+            // send error
+        }
+    }
 }
 
 
@@ -522,6 +648,18 @@ extension WebSocketManager {
             return false
         }
         return connections.contains { $0.socket === socket }
+    }
+    
+    private func resetRoomState(for room: Room, db: Database) async throws {
+        room.gameStatus = GameStatus.waiting.rawValue
+        room.leaderboard = [:]
+        room.tilesLeft = [:]
+        room.board = ""
+        room.turnOrder = []
+        room.currentTurnIndex = 0
+        room.playersTiles = [:]
+        room.placedWords = []
+        try await room.update(on: db)
     }
     
     private func distributeTiles(to players: [UUID], using tiles: inout [String: Int]) -> [String: [String]] {
@@ -553,6 +691,23 @@ extension WebSocketManager {
         } catch {
             print("Error encoding message: \(error)")
             return nil
+        }
+    }
+    
+    private func convertLeaderboardToUsernameFormat(
+        leaderboard: [String: Int],
+        roomPlayers: Any
+    ) -> [String: Int] {
+        leaderboard.reduce(into: [String: Int]()) { result, entry in
+            if let uuid = UUID(uuidString: entry.key) {
+                if let playersMap = roomPlayers as? [UUID: RoomPlayer],
+                   let username = playersMap[uuid]?.player.username {
+                    result[username] = entry.value
+                } else if let playersArray = roomPlayers as? [RoomPlayer],
+                          let player = playersArray.first(where: { $0.$player.id == uuid }) {
+                    result[player.player.username] = entry.value
+                }
+            }
         }
     }
 }

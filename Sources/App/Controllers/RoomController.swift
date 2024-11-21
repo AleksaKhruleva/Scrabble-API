@@ -23,7 +23,7 @@ struct RoomController: RouteCollection {
         let userService = UserService(db: req.db)
         let adminID = try await userService.fetchUserID(req: req)
         let room = try await createRoom(on: req.db, createRoomDTO: createRoomDTO, adminID: adminID)
-        return room.toDTO()
+        return room.toDTO(for: adminID)
     }
     
     @Sendable
@@ -35,7 +35,7 @@ struct RoomController: RouteCollection {
         guard let room = try await joinRandomPublicRoom(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
-        return room.toDTO()
+        return room.toDTO(for: userID)
     }
     
     @Sendable
@@ -47,7 +47,7 @@ struct RoomController: RouteCollection {
         guard let room = try await joinRoomByInviteCode(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
-        return room.toDTO()
+        return room.toDTO(for: userID)
     }
 }
 
@@ -147,7 +147,7 @@ extension RoomController {
     
     private func getRoomWithPlayers(on db: Database, room: Room) async throws -> Room {
         let roomWithPlayers = try await Room.query(on: db)
-            .with(\.$players)
+            .with(\.$players) { $0.with(\.$player) }
             .filter(\.$inviteCode == room.inviteCode)
             .first()
         guard let roomWithPlayers else {
