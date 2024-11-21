@@ -1,18 +1,18 @@
 import Vapor
 
 struct WebSocketController: RouteCollection {
-    
+
     func boot(routes: any Vapor.RoutesBuilder) throws {
         let sockets = routes.grouped("sockets")
-        
+
         // MARK: - Middleware
         let tokenAuthMiddleware = Token.authenticator()
         let guardAuthMiddleware = User.guardMiddleware()
         let tokenAuthGroup = sockets.grouped(tokenAuthMiddleware, guardAuthMiddleware)
-        
+
         tokenAuthGroup.webSocket("connect", onUpgrade: connect)
     }
-    
+
     @Sendable
     func connect(req: Request, socket: WebSocket) {
         socket.onText {socket, message in
@@ -20,18 +20,17 @@ struct WebSocketController: RouteCollection {
                 await handleMessage(socket: socket, message: message, req: req)
             }
         }
-        
+
         socket.onClose.whenComplete { _ in
             WebSocketManager.shared.removeConnection(for: socket)
         }
     }
 }
 
-
 // MARK: - Private
 
 extension WebSocketController {
-    
+
     private func handleMessage(socket: WebSocket, message: String, req: Request) async {
         guard let incomingMessage = decodeIncomingMessage(from: message) else {
             // Send error: Unable to decode message
@@ -44,7 +43,7 @@ extension WebSocketController {
                 req: req
             )
     }
-    
+
     private func decodeIncomingMessage(from message: String) -> IncomingMessage? {
         guard let messageData = message.data(using: .utf8) else {
             return nil

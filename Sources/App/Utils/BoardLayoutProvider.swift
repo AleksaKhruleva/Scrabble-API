@@ -1,11 +1,11 @@
 import Foundation
 
 final class BoardLayoutProvider: @unchecked Sendable {
-    
+
     static let shared = BoardLayoutProvider()
     let size: Int
     let layout: [[BonusType]]
-    
+
     private init() {
         if let boardData = Self.loadBoardLayout() {
             self.size = boardData.size
@@ -16,7 +16,7 @@ final class BoardLayoutProvider: @unchecked Sendable {
             self.layout = Array(repeating: Array(repeating: .none, count: 15), count: 15)
         }
     }
-    
+
     private static func loadBoardLayout() -> BoardLayoutInfo? {
         guard let url = Bundle.module.url(forResource: "boardLayout", withExtension: "json") else {
             print("Error: boardLayout.json file not found")
@@ -30,12 +30,11 @@ final class BoardLayoutProvider: @unchecked Sendable {
             return nil
         }
     }
-    
+
     private static func createBoardLayout(from data: BoardLayoutInfo) -> [[BonusType]] {
         let emptyRow: [BonusType] = Array(repeating: .none, count: data.size)
         var board: [[BonusType]] = Array(repeating: emptyRow, count: data.size)
-        
-        
+
         for position in data.doubleLetter {
             board[position[0]][position[1]] = .doubleLetter
         }
@@ -48,7 +47,7 @@ final class BoardLayoutProvider: @unchecked Sendable {
         for position in data.tripleWord {
             board[position[0]][position[1]] = .tripleWord
         }
-        
+
         return board
     }
 }

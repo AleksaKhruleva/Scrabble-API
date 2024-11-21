@@ -18,7 +18,7 @@ struct OutcomingMessage: Codable {
     let winnerID: UUID?
     let reaction: String?
     let senderID: UUID?
-    
+
     init(
         event: RoomEvent,
         newPlayerInfo: PlayerInfo? = nil,
