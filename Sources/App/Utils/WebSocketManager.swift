@@ -136,6 +136,10 @@ extension WebSocketManager {
         db: Database
     ) async {
         do {
+            guard !isSocketConnected(to: roomID, socket: socket) else {
+                // send error: socket is already connected
+                return
+            }
             guard let userName = try await User.find(userID, on: db)?.username else {
                 // send error: could not fetch username from db
                 return
