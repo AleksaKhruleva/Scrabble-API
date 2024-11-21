@@ -532,14 +532,36 @@ extension WebSocketManager {
                 }
             }
             
+            var board = room.board
+            
             // check words around new word
+            let aroundWords = findAllWords(
+                from: letters,
+                withTiles: playerTiles,
+                forWord: word,
+                direction: direction,
+                board: board
+            )
+            
+            // check
             
             // place the word on the board
-            var board = room.board
+            var sameLetterCount = 0
             for letter in letters {
                 let row = letter.position[0]
                 let col = letter.position[1]
                 let index = row * 15 + col
+                
+                let charAtIndex = board[board.index(board.startIndex, offsetBy: index)]
+                guard charAtIndex == "." || charAtIndex == Character(playerTiles[letter.tileIndex]) else {
+                    // send error: the tile [\(row);\(col)] is used by another letter
+                    return
+                }
+                
+                if charAtIndex == Character(playerTiles[letter.tileIndex]) {
+                    sameLetterCount += 1
+                }
+                
                 board = board.replacingCharacters(
                     in: board.index(
                         board.startIndex,
@@ -550,6 +572,12 @@ extension WebSocketManager {
                     ),
                     with: playerTiles[letter.tileIndex]
                 )
+            }
+            if room.placedWords.count > 0 {
+                guard sameLetterCount > 0 else {
+                    // send error: new word should cross any other word on the board
+                    return
+                }
             }
             
             // giving new tiles to player
@@ -735,25 +763,23 @@ extension WebSocketManager {
     
     private func findAllWords(
         from letters: [LetterPlacement],
-        with playerTiles: [String],
+        withTiles playerTiles: [String],
+        forWord mainWord: String,
         direction: Direction,
-        board: [[String]]
+        board: String
     ) -> [String] {
         var words = [String]()
-        
-        let mainWord = letters.buildWord(with: playerTiles, direction: direction)
-        words.append(mainWord)
-        
+
         for letter in letters {
             let row = letter.position[0]
             let col = letter.position[1]
-            if direction == Direction.horizontal {
-                let verticalWord = findWord(row: row, col: col, direction: Direction.vertical, board: board)
+            if direction == .horizontal {
+                let verticalWord = findWord(row: row, col: col, direction: .vertical, board: board)
                 if verticalWord.count > 1 {
                     words.append(verticalWord)
                 }
             } else {
-                let horizontalWord = findWord(row: row, col: col, direction: Direction.horizontal, board: board)
+                let horizontalWord = findWord(row: row, col: col, direction: .horizontal, board: board)
                 if horizontalWord.count > 1 {
                     words.append(horizontalWord)
                 }
@@ -763,34 +789,43 @@ extension WebSocketManager {
         return words
     }
     
-    private func findWord(row: Int, col: Int, direction: Direction, board: [[String]]) -> String {
+    private func findWord(row: Int, col: Int, direction: Direction, board: String) -> String {
         var word = ""
         var r = row
         var c = col
-        
-        while r >= 0, c >= 0, board[r][c] != ".", board[r][c] != " " {
-            if direction == Direction.horizontal {
+        let boardSize = BoardLayoutProvider.shared.size
+
+        func charAt(index: Int) -> Character {
+            return board[board.index(board.startIndex, offsetBy: index)]
+        }
+
+        func index(row: Int, col: Int) -> Int {
+            return row * boardSize + col
+        }
+
+        while r >= 0, c >= 0, charAt(index: index(row: r, col: c)) != ".", charAt(index: index(row: r, col: c)) != " " {
+            if direction == .horizontal {
                 c -= 1
             } else {
                 r -= 1
             }
         }
-        
-        if direction == Direction.horizontal {
+
+        if direction == .horizontal {
             c += 1
         } else {
             r += 1
         }
-        
-        while r < 15, c < 15, board[r][c] != ".", board[r][c] != " " {
-            word.append(board[r][c])
-            if direction == Direction.horizontal {
+
+        while r < boardSize, c < boardSize, charAt(index: index(row: r, col: c)) != ".", charAt(index: index(row: r, col: c)) != " " {
+            word.append(charAt(index: index(row: r, col: c)))
+            if direction == .horizontal {
                 c += 1
             } else {
                 r += 1
             }
         }
-        
+
         return word
     }
     
