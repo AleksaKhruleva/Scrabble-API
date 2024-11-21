@@ -6,9 +6,8 @@ struct OutcomingMessage: Codable {
     let newRoomPrivacy: Bool?
     let kickedPlayerID: UUID?
     let leftPlayerID: UUID?
-    let skippedPlayerID: UUID?
     let exchangedTilesPlayerID: UUID?
-    let madeMovePlayerID: UUID?
+    let endedTurnPlayerID: UUID?
     let placedWordPlayerID: UUID?
     let newWord: String?
     let scoredPoints: Int?
@@ -23,9 +22,8 @@ struct OutcomingMessage: Codable {
         newRoomPrivacy: Bool? = nil,
         kickedPlayerID: UUID? = nil,
         leftPlayerID: UUID? = nil,
-        skippedPlayerID: UUID? = nil,
         exchangedTilesPlayerID: UUID? = nil,
-        madeMovePlayerID: UUID? = nil,
+        endedTurnPlayerID: UUID? = nil,
         placedWordPlayerID: UUID? = nil,
         newWord: String? = nil,
         scoredPoints: Int? = nil,
@@ -38,9 +36,8 @@ struct OutcomingMessage: Codable {
         self.newPlayerInfo = newPlayerInfo
         self.kickedPlayerID = kickedPlayerID
         self.leftPlayerID = leftPlayerID
-        self.skippedPlayerID = skippedPlayerID
         self.exchangedTilesPlayerID = exchangedTilesPlayerID
-        self.madeMovePlayerID = madeMovePlayerID
+        self.endedTurnPlayerID = endedTurnPlayerID
         self.placedWordPlayerID = placedWordPlayerID
         self.newWord = newWord
         self.scoredPoints = scoredPoints
