@@ -20,7 +20,8 @@ struct RoomController: RouteCollection {
     func create(req: Request) async throws -> RoomDTO {
         let createRoomDTO = try req.content.decode(CreateRoomDTO.self)
         
-        let adminID = try await fetchUserID(req: req)
+        let userService = UserService(db: req.db)
+        let adminID = try await userService.fetchUserID(req: req)
         let room = try await createRoom(on: req.db, createRoomDTO: createRoomDTO, adminID: adminID)
         return room.toDTO()
     }
@@ -29,8 +30,10 @@ struct RoomController: RouteCollection {
     func joinRandomPublic(req: Request) async throws -> RoomDTO {
         let joinRoomDTO = try req.content.decode(JoinRoomDTO.self)
         
-        let userID = try await fetchUserID(req: req)
+        let userService = UserService(db: req.db)
+        let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRandomPublicRoom(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO()
@@ -40,8 +43,10 @@ struct RoomController: RouteCollection {
     func joinByInviteCode(req: Request) async throws -> RoomDTO {
         let joinRoomDTO = try req.content.decode(JoinRoomDTO.self)
         
-        let userID = try await fetchUserID(req: req)
+        let userService = UserService(db: req.db)
+        let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRoomByInviteCode(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO()
@@ -65,7 +70,7 @@ extension RoomController {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
                 let inviteCode = String(UUID().uuidString.prefix(6).uppercased())
                 room = Room(
@@ -81,7 +86,7 @@ extension RoomController {
                 } catch let error as DatabaseError where error.isConstraintFailure {
                     continue
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
             }
             return room
@@ -101,8 +106,7 @@ extension RoomController {
                 }
                 return try await joinRoom(randomRoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
@@ -122,8 +126,7 @@ extension RoomController {
                 }
                 return try await joinRoom(specificoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
@@ -163,22 +166,5 @@ extension RoomController {
             playerID: playerID
         )
         return try await getRoomWithPlayers(on: db, room: room)
-    }
-}
-
-extension RoomController {
-    
-    private func fetchUserID(req: Request) async throws -> UUID {
-        guard let tokenValue = req.headers.bearerAuthorization?.token else {
-            throw Abort(.unauthorized, reason: "Missing or invalid token")
-        }
-        guard let token = try await Token.query(on: req.db)
-            .filter("value", .equal, tokenValue)
-            .first()
-        else {
-            throw Abort(.unauthorized, reason: "Invalid or expired token")
-        }
-        let userID = token.$user.id
-        return userID
     }
 }
