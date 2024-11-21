@@ -5,4 +5,5 @@ enum Schema: String {
     case rooms
     case tokens
     case roomPlayers = "room_players"
+    case words
 }
