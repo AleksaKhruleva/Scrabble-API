@@ -3,7 +3,7 @@ import Fluent
 
 final class WordsProvider: @unchecked Sendable {
     static let shared = WordsProvider()
-    
+
     private init() {}
 
     func loadWords(on db: Database) async throws -> Int {

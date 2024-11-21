@@ -2,7 +2,7 @@ import Fluent
 import Vapor
 
 final class Word: Model, @unchecked Sendable {
-    
+
     static let schema = Schema.words.rawValue
 
     @ID(key: .id)

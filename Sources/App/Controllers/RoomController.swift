@@ -2,34 +2,34 @@ import Fluent
 import Vapor
 
 struct RoomController: RouteCollection {
-    
+
     func boot(routes: any Vapor.RoutesBuilder) throws {
         let rooms = routes.grouped("rooms")
-        
+
         // MARK: - Middleware
         let tokenAuthMiddleware = Token.authenticator()
         let guardAuthMiddleware = User.guardMiddleware()
         let tokenAuthGroup = rooms.grouped(tokenAuthMiddleware, guardAuthMiddleware)
-        
+
         tokenAuthGroup.post("create", use: create)
         tokenAuthGroup.post("joinRandomPublic", use: joinRandomPublic)
         tokenAuthGroup.post("joinByInviteCode", use: joinByInviteCode)
     }
-    
+
     @Sendable
     func create(req: Request) async throws -> RoomDTO {
         let createRoomDTO = try req.content.decode(CreateRoomDTO.self)
-        
+
         let userService = UserService(db: req.db)
         let adminID = try await userService.fetchUserID(req: req)
         let room = try await createRoom(on: req.db, createRoomDTO: createRoomDTO, adminID: adminID)
         return room.toDTO(for: adminID)
     }
-    
+
     @Sendable
     func joinRandomPublic(req: Request) async throws -> RoomDTO {
         let joinRoomDTO = try req.content.decode(JoinRoomDTO.self)
-        
+
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRandomPublicRoom(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
@@ -38,11 +38,11 @@ struct RoomController: RouteCollection {
         }
         return room.toDTO(for: userID)
     }
-    
+
     @Sendable
     func joinByInviteCode(req: Request) async throws -> RoomDTO {
         let joinRoomDTO = try req.content.decode(JoinRoomDTO.self)
-        
+
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRoomByInviteCode(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
@@ -53,20 +53,19 @@ struct RoomController: RouteCollection {
     }
 }
 
-
 // MARK: - Private
 
 extension RoomController {
-    
+
     private func createRoom(on db: Database, createRoomDTO: CreateRoomDTO, adminID: UUID) async throws -> Room {
         return try await db.transaction { db in
             var room: Room
             while true {
                 do {
-                    guard let _ = try await User.find(adminID, on: db) else {
+                    guard try await User.find(adminID, on: db) != nil else {
                         throw Abort(.badRequest, reason: "User with ID \(adminID) does not exist")
                     }
-                    if let _ = try await Room.query(on: db).filter(\.$admin.$id == adminID).first() {
+                    if try await Room.query(on: db).filter(\.$admin.$id == adminID).first() != nil {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
@@ -94,7 +93,7 @@ extension RoomController {
             return room
         }
     }
-    
+
     private func joinRandomPublicRoom(on db: Database, joinRoomDTO: JoinRoomDTO, userID: UUID) async throws -> Room? {
         return try await db.transaction { db in
             do {
@@ -112,7 +111,7 @@ extension RoomController {
             }
         }
     }
-    
+
     private func joinRoomByInviteCode(on db: Database, joinRoomDTO: JoinRoomDTO, userID: UUID) async throws -> Room? {
         guard let inviteCode = joinRoomDTO.inviteCode else {
             throw Abort(.badRequest, reason: "Invite code is required")
@@ -124,7 +123,10 @@ extension RoomController {
                     .filter(\.$gameStatus == GameStatus.waiting.rawValue)
                     .first()
                 else {
-                    throw Abort(.notFound, reason: "Room with the given invite code not found or the game has already started")
+                    throw Abort(
+                        .notFound,
+                        reason: "Room with the given invite code not found or the game has already started"
+                    )
                 }
                 return try await joinRoom(specificRoom, with: userID, on: db)
             } catch {
@@ -134,9 +136,8 @@ extension RoomController {
     }
 }
 
-
 extension RoomController {
-    
+
     private func createRoomPlayer(on db: Database, roomID: UUID, playerID: UUID) async throws {
         let roomPlayer = RoomPlayer(
             roomID: roomID,
@@ -144,7 +145,7 @@ extension RoomController {
         )
         try await roomPlayer.save(on: db)
     }
-    
+
     private func getRoomWithPlayers(on db: Database, room: Room) async throws -> Room {
         let roomWithPlayers = try await Room.query(on: db)
             .with(\.$players) { $0.with(\.$player) }
@@ -155,7 +156,7 @@ extension RoomController {
         }
         return roomWithPlayers
     }
-    
+
     private func joinRoom(_ room: Room, with playerID: UUID, on db: Database) async throws -> Room {
         guard try await Room
             .find(room.id, on: db)?.gameStatus == GameStatus.waiting.rawValue

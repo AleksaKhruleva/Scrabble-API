@@ -2,9 +2,9 @@ import Foundation
 import Vapor
 
 final class APIKeyService {
-    
+
     let filePath = ".env"
-    
+
     // Saving API-key to `.env` file
     func saveAPIKeyToEnvFile(app: Application, apiKey: String) {
         let newEntry = "API_KEY=\(apiKey)\n"

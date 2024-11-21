@@ -1,0 +1,16 @@
+included:
+  - Sources/App
+
+identifier_name:
+  excluded:
+    - db
+    - id
+
+function_body_length:
+  excluded:
+    - Sources/App/Utils/WebSocketManager.swift
+
+cyclomatic_complexity:
+  excluded:
+    - Sources/App/Utils/WebSocketManager.swift
+

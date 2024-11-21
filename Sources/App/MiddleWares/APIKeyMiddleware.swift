@@ -1,7 +1,7 @@
 import Vapor
 
 struct APIKeyMiddleware: AsyncMiddleware {
-    
+
     private let validAPIKey: String
 
     init(apiKey: String) {

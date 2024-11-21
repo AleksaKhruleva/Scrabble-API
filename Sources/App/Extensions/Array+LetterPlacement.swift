@@ -1,7 +1,7 @@
 import Foundation
 
 extension Array where Element == LetterPlacement {
-    
+
     func buildWord(with letters: [String], direction: Direction) -> String {
         return self
             .sorted { lhs, rhs in
@@ -16,7 +16,7 @@ extension Array where Element == LetterPlacement {
             .map { letters[$0.tileIndex] } // Извлекаем буквы
             .joined()          // Объединяем в строку
     }
-    
+
     func getIndexes() -> [Int] {
         return self.map { $0.tileIndex }
     }
