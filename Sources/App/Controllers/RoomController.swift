@@ -33,6 +33,7 @@ struct RoomController: RouteCollection {
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRandomPublicRoom(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO(for: userID)
@@ -45,6 +46,7 @@ struct RoomController: RouteCollection {
         let userService = UserService(db: req.db)
         let userID = try await userService.fetchUserID(req: req)
         guard let room = try await joinRoomByInviteCode(on: req.db, joinRoomDTO: joinRoomDTO, userID: userID) else {
+            // Impossible to get here
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO(for: userID)
@@ -68,7 +70,7 @@ extension RoomController {
                         throw Abort(.conflict, reason: "Another room with this admin already exists")
                     }
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
                 let inviteCode = String(UUID().uuidString.prefix(6).uppercased())
                 room = Room(
@@ -86,7 +88,7 @@ extension RoomController {
                 } catch let error as DatabaseError where error.isConstraintFailure {
                     continue
                 } catch {
-                    try ErrorService.shared.handleError(error)
+                    throw ErrorService.shared.handleError(error)
                 }
             }
             return room
@@ -106,8 +108,7 @@ extension RoomController {
                 }
                 return try await joinRoom(randomRoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
@@ -127,8 +128,7 @@ extension RoomController {
                 }
                 return try await joinRoom(specificRoom, with: userID, on: db)
             } catch {
-                try ErrorService.shared.handleError(error)
-                return nil
+                throw ErrorService.shared.handleError(error)
             }
         }
     }
