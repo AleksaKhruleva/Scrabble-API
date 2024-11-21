@@ -17,6 +17,16 @@ public func configure(_ app: Application) async throws {
         tls: .prefer(try .init(configuration: .clientDefault)))
     ), as: .psql)
     
+    // MARK: - Generating API-Key
+    let apiKeyService = APIKeyService()
+    let generatedApiKey = apiKeyService.generateAPIKey()
+    apiKeyService.saveAPIKeyToEnvFile(app: app, apiKey: generatedApiKey)
+    
+    // MARK: - Setup API-Key
+    let apiKey = Environment.get("API_KEY") ?? generatedApiKey
+    app.logger.info("Loaded API_KEY: \(apiKey)")
+    app.middleware.use(APIKeyMiddleware(apiKey: apiKey))
+    
     // MARK: - Setup Services
     let userService: UserServiceProtocol = UserService(db: app.db)
     app.register(userService)
@@ -31,3 +41,5 @@ public func configure(_ app: Application) async throws {
     // MARK: - Register routes
     try routes(app)
 }
+
+
