@@ -27,14 +27,14 @@ final class WebSocketManager: @unchecked Sendable {
     func receiveMessage(from socket: WebSocket, incomingMessage: IncomingMessage, req: Request) async {
         await handleIncomingMessage(socket: socket, incomingMessage: incomingMessage, req: req)
     }
-    
+
     func sendMessage(to connections: [UserConnection]?, outcomingMessage: OutcomingMessage) {
         guard let connections, let message = encodeMessage(outcomingMessage) else { return }
         for connection in connections {
             connection.socket.send(message)
         }
     }
-    
+
     func sendError(to sockets: [WebSocket]?, message: String) {
         let outcomingMessage = OutcomingMessage(
             event: .error,
@@ -201,7 +201,7 @@ extension WebSocketManager {
                 sendError(to: [socket], message: "User is not a valid player in this room")
                 return
             }
-            
+
             let connection = addConnection(roomID: roomID, userID: userID, socket: socket)
             sendMessage(to: [connection], outcomingMessage: OutcomingMessage(event: .joinedRoom))
 
@@ -239,10 +239,10 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoomIfAdmin(roomID: roomID, userID: userID, db: db)
             try validateGameState(room, validStates: [GameStatus.waiting.rawValue, GameStatus.ready.rawValue])
-            
+
             room.isPrivate.toggle()
             try await room.update(on: db)
-            
+
             sendMessage(
                 to: connections[roomID],
                 outcomingMessage: OutcomingMessage(
@@ -269,7 +269,7 @@ extension WebSocketManager {
             let room = try await fetchRoomIfAdmin(roomID: roomID, userID: userID, db: db)
             try validateGameState(room, validStates: [GameStatus.waiting.rawValue, GameStatus.ready.rawValue])
             try validateKickPlayerID(kickPlayerID: kickPlayerID, userID: userID, roomID: roomID)
-            
+
             let initialGameStatus = room.gameStatus
 
             try await db.transaction { db in
@@ -328,7 +328,7 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoom(roomID: roomID, db: db)
             try validateGameState(room, validStates: [GameStatus.waiting.rawValue, GameStatus.ready.rawValue])
-            
+
             let initialGameStatus = room.gameStatus
             let adminLeft = userID == room.$admin.id
 
@@ -418,7 +418,7 @@ extension WebSocketManager {
             try validatePlayerTurn(room: room, userID: userID)
             try validateTilesLeft(room: room)
             try validateChangingTilesCount(changingTiles.count)
-            
+
             // returning tiles to bag
             for index in changingTiles {
                 if let currentTile = room.playersTiles[userID.uuidString]?[index],
@@ -483,7 +483,7 @@ extension WebSocketManager {
             try validateGameState(room, validStates: [GameStatus.started.rawValue])
             try validatePlayerTurn(room: room, userID: userID)
             try validateSkippedTurns(for: room)
-            
+
             // Noticing players about end of the game because of 6 empty turns
             if let winnerID = UUID(uuidString: room.leaderboard.max(by: { $0.value < $1.value })?.key ?? ""),
                let playersConnections = connections[roomID] {
@@ -521,16 +521,16 @@ extension WebSocketManager {
             let room = try await fetchRoom(roomID: roomID, db: db)
             try validateGameState(room, validStates: [GameStatus.started.rawValue])
             try validatePlayerTurn(room: room, userID: userID)
-            
+
             if emptyTurn {
                 room.currentSkippedTurns += 1
             } else {
                 room.currentSkippedTurns = 0
             }
             try await room.update(on: db)
-            
+
             guard let playerTiles = room.playersTiles[userID.uuidString] else { return }
-            
+
             // Moved to the next turn
             room.currentTurnIndex = (room.currentTurnIndex + 1) % room.turnOrder.count
             try await room.update(on: db)
@@ -577,16 +577,16 @@ extension WebSocketManager {
             let room = try await fetchRoom(roomID: roomID, db: db)
             try validateGameState(room, validStates: [GameStatus.started.rawValue])
             try validatePlayerTurn(room: room, userID: userID)
-            
+
             guard var playerTiles = room.playersTiles[userID.uuidString] else { return }
-            
+
             let gameService = WordGameService()
             let word = letters.buildWord(with: playerTiles, direction: direction)
-            
+
             guard try await gameService.isValidWord(word, on: db) else {
                 throw Abort(.badRequest, reason: "The word '\(word)' is invalid")
             }
-            
+
             if room.placedWords.count == 0 {
                 try validateFirstWordPlacement(letters: letters)
             }
@@ -713,7 +713,7 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoomIfAdmin(roomID: roomID, userID: userID, db: db)
             try validateGameState(room, validStates: [GameStatus.waiting.rawValue, GameStatus.ready.rawValue])
-            
+
             let boardSize = BoardLayoutProvider.shared.size
             let boardLayout = BoardLayoutProvider.shared.layout
             let boardString = String(repeating: ".", count: boardSize * boardSize)
@@ -722,7 +722,7 @@ extension WebSocketManager {
             let roomPlayersMap = Dictionary(uniqueKeysWithValues: roomPlayers.map { ($0.$player.id, $0) })
 
             let turnOrder = roomPlayersMap.keys.shuffled()
-            
+
             let leaderboard = Dictionary(uniqueKeysWithValues: turnOrder.map { ($0.uuidString, 0) })
 
             var tilesLeft = LettersInfoProvider.shared.initialQuantities()
@@ -748,7 +748,9 @@ extension WebSocketManager {
                     playerTiles: playerTiles
                 )
 
-                guard let currentConnection = connections[roomID]?.first(where: { $0.userID == playerID }) else { return }
+                guard let currentConnection = connections[roomID]?.first(where: { $0.userID == playerID }) else {
+                    return
+                }
                 sendMessage(to: [currentConnection], outcomingMessage: message)
             }
         } catch let error as Abort {
@@ -768,10 +770,10 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoomIfAdmin(roomID: roomID, userID: userID, db: db)
             try validateGameState(room, validStates: [GameStatus.started.rawValue])
-            
+
             room.gameStatus = GameStatus.paused.rawValue
             try await room.update(on: db)
-            
+
             sendMessage(
                 to: connections[roomID],
                 outcomingMessage: OutcomingMessage(event: .gamePaused)
@@ -793,10 +795,10 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoomIfAdmin(roomID: roomID, userID: userID, db: db)
             try validateGameState(room, validStates: [GameStatus.paused.rawValue])
-            
+
             room.gameStatus = GameStatus.started.rawValue
             try await room.update(on: db)
-            
+
             sendMessage(
                 to: connections[roomID],
                 outcomingMessage: OutcomingMessage(
@@ -820,7 +822,7 @@ extension WebSocketManager {
         do {
             try validateSocketConnection(socket: socket, roomID: roomID)
             let userID = try extractUserID(from: socket, in: roomID)
-            
+
             sendMessage(
                 to: connections[roomID],
                 outcomingMessage: OutcomingMessage(
@@ -846,7 +848,7 @@ extension WebSocketManager {
             let userID = try extractUserID(from: socket, in: roomID)
             let room = try await fetchRoomWithPlayersAndAdmin(roomID: roomID, db: db)
             try validateGameState(room, validStates: [GameStatus.started.rawValue, GameStatus.paused.rawValue])
-            
+
             let adminLeft = userID == room.$admin.id
 
             let remainingPlayers = try await db.transaction { db -> [RoomPlayer] in
@@ -905,7 +907,7 @@ extension WebSocketManager {
             if remainingPlayers.count == 1, let winner = remainingPlayers.first {
                 room.reset()
                 try await room.update(on: db)
-                
+
                 let winnerID = winner.$player.id
 
                 sendMessage(
@@ -948,27 +950,30 @@ extension WebSocketManager {
         }
         return connections.contains { $0.socket === socket }
     }
-    
+
     private func validateSocketConnection(socket: WebSocket, roomID: UUID) throws {
         guard let connections = connections[roomID], connections.contains(where: { $0.socket === socket }) else {
-            throw Abort(.badRequest, reason: "No connection found or the current connection is not associated with the room")
+            throw Abort(
+                .badRequest,
+                reason: "No connection found or the current connection is not associated with the room"
+            )
         }
     }
-    
+
     private func extractUserID(from socket: WebSocket, in roomID: UUID) throws -> UUID {
         guard let userID = connections[roomID]?.first(where: { $0.socket === socket })?.userID else {
             throw Abort(.badRequest, reason: "User ID could not be found for the specified connection in the room")
         }
         return userID
     }
-    
+
     private func fetchRoomIfAdmin(roomID: UUID, userID: UUID, db: Database) async throws -> Room {
         guard let room = try await Room.find(roomID, on: db), room.$admin.id == userID else {
             throw Abort(.forbidden, reason: "You are not the admin of this room or the room does not exist")
         }
         return room
     }
-    
+
     private func fetchRoom(roomID: UUID, db: Database) async throws -> Room {
         guard let room = try await Room.query(on: db)
             .with(\.$players)
@@ -978,7 +983,7 @@ extension WebSocketManager {
         }
         return room
     }
-    
+
     func fetchRoomWithPlayersAndAdmin(roomID: UUID, db: Database) async throws -> Room {
         guard let room = try await Room.query(on: db)
             .with(\.$players)
@@ -989,13 +994,13 @@ extension WebSocketManager {
         }
         return room
     }
-    
+
     private func validateGameState(_ room: Room, validStates: [String]) throws {
         guard validStates.contains(room.gameStatus) else {
             throw Abort(.badRequest, reason: "Game is not in a valid state for this action")
         }
     }
-    
+
     private func validateKickPlayerID(kickPlayerID: UUID, userID: UUID, roomID: UUID) throws {
         guard kickPlayerID != userID else {
             throw Abort(.forbidden, reason: "The admin cannot kick themselves from the room")
@@ -1004,38 +1009,44 @@ extension WebSocketManager {
             throw Abort(.badRequest, reason: "The specified player is not part of the room")
         }
     }
-    
+
     private func validatePlayerTurn(room: Room, userID: UUID) throws {
         guard room.turnOrder[room.currentTurnIndex] == userID else {
             throw Abort(.forbidden, reason: "It is another player's turn")
         }
     }
-    
+
     private func validateTilesLeft(room: Room, minimumTiles: Int = 7) throws {
         let totalTilesLeft = room.tilesLeft.values.reduce(0, +)
         guard totalTilesLeft >= minimumTiles else {
             throw Abort(.badRequest, reason: "There must be at least \(minimumTiles) tiles left")
         }
     }
-    
+
     private func validateChangingTilesCount(_ count: Int, min: Int = 1, max: Int = 7) throws {
         guard count >= min && count <= max else {
             throw Abort(.badRequest, reason: "You can exchange between \(min) and \(max) tiles")
         }
     }
-    
+
     private func validateSkippedTurns(for room: Room, requiredTurns: Int = 6) throws {
         guard room.currentSkippedTurns >= requiredTurns else {
-            throw Abort(.badRequest, reason: "The game can't be ended yet. Minimum \(requiredTurns) skipped turns are required")
+            throw Abort(
+                .badRequest,
+                reason: "The game can't be ended yet. Minimum \(requiredTurns) skipped turns are required"
+            )
         }
     }
-    
+
     private func validateFirstWordPlacement(letters: [LetterPlacement], centerPosition: [Int] = [7, 7]) throws {
         guard letters.contains(where: { $0.position == centerPosition }) else {
-            throw Abort(.badRequest, reason: "The first word on the board must cover the center position \(centerPosition)")
+            throw Abort(
+                .badRequest,
+                reason: "The first word on the board must cover the center position \(centerPosition)"
+            )
         }
     }
-    
+
     private func redistributeTiles(
         to player: UUID,
         withTiles playerTiles: [String],
@@ -1044,7 +1055,7 @@ extension WebSocketManager {
     ) -> [String] {
         var newPlayerTiles = playerTiles
         var remainingChangingTiles = changingTiles
-        
+
         let totalTilesAvailable = tiles.values.reduce(0, +)
         if totalTilesAvailable < changingTiles.count {
             remainingChangingTiles = Array(changingTiles.prefix(totalTilesAvailable))
@@ -1064,10 +1075,10 @@ extension WebSocketManager {
                 tiles.removeValue(forKey: randomLetter)
             }
         }
-        
+
         return newPlayerTiles.filter { !$0.isEmpty }
     }
-    
+
     private func distributeTiles(to players: [UUID], using tiles: inout [String: Int]) -> [String: [String]] {
         var playersTiles: [String: [String]] = [:]
 

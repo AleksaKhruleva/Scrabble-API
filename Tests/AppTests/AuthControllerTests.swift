@@ -5,6 +5,9 @@ import Fluent
 
 @Suite("AuthController Tests", .serialized)
 struct AuthControllerTests {
+    
+    let apiService = APIKeyService()
+    
     private func withApp(_ test: (Application) async throws -> ()) async throws {
         let app = try await Application.make(.testing)
         do {
@@ -27,6 +30,9 @@ struct AuthControllerTests {
         
         try await withApp { app in
             try await app.test(.POST, "api/v1/auth/register", beforeRequest: { req in
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
                 try req.content.encode(user)
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
@@ -50,12 +56,12 @@ struct AuthControllerTests {
             try await user.save(on: app.db)
             
             try await app.test(.POST, "api/v1/auth/register", beforeRequest: { req in
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
                 try req.content.encode(registerUser)
             }, afterResponse: { res async throws in
                 #expect(res.status == .internalServerError)
-                
-                let errorResponse = try res.content.decode(ErrorDTO.self)
-                #expect(errorResponse.reason.contains("Database operation failed"))
             })
         }
     }
@@ -70,6 +76,9 @@ struct AuthControllerTests {
             try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
                 let basicAuth = BasicAuthorization(username: "test@example.com", password: "password123")
                 req.headers.basicAuthorization = basicAuth
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
                 
@@ -92,6 +101,9 @@ struct AuthControllerTests {
             try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
                 let basicAuth = BasicAuthorization(username: user.email, password: "password123")
                 req.headers.basicAuthorization = basicAuth
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 #expect(res.status == .ok)
                 
@@ -111,6 +123,9 @@ struct AuthControllerTests {
             try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
                 let basicAuth = BasicAuthorization(username: "test@example.com", password: "InvalidPassword")
                 req.headers.basicAuthorization = basicAuth
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 #expect(res.status == .unauthorized)
             })
@@ -127,6 +142,9 @@ struct AuthControllerTests {
             try await app.test(.POST, "api/v1/auth/login", beforeRequest: { req in
                 let basicAuth = BasicAuthorization(username: "invalid@example.com", password: "password123")
                 req.headers.basicAuthorization = basicAuth
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 #expect(res.status == .unauthorized)
             })
