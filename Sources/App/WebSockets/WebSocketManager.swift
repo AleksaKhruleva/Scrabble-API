@@ -736,7 +736,7 @@ extension WebSocketManager {
             room.tilesLeft = tilesLeftCopy
             room.playersTiles = playersTiles
             room.gameStatus = GameStatus.started.rawValue
-            try await room.save(on: db)
+            try await room.update(on: db)
 
             for playerID in turnOrder {
                 let playerTiles = playersTiles[playerID.uuidString]
