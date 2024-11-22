@@ -31,6 +31,31 @@ final class APIKeyService {
             }
         }
     }
+    
+    // Reading API-Key from `.env` file
+    func readAPIKeyFromEnvFile(app: Application) -> String? {
+        let fileManager = FileManager.default
+
+        guard fileManager.fileExists(atPath: filePath) else {
+            app.logger.info("File \(filePath) does not exist.")
+            return nil
+        }
+
+        do {
+            let contents = try String(contentsOfFile: filePath, encoding: .utf8)
+            let lines = contents.split(separator: "\n")
+            for line in lines {
+                if line.starts(with: "API_KEY=") {
+                    return String(line.dropFirst("API_KEY=".count))
+                }
+            }
+            app.logger.info("API_KEY not found in \(filePath).")
+        } catch {
+            app.logger.info("Failed to read from \(filePath): \(error)")
+        }
+
+        return nil
+    }
 
     // Generating random API-key
     func generateAPIKey(length: Int = 32) -> String {

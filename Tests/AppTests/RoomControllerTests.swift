@@ -5,6 +5,9 @@ import Fluent
 
 @Suite("RoomController Tests", .serialized)
 struct RoomControllerTests {
+    
+    let apiService = APIKeyService()
+    
     private func withApp(_ test: (Application) async throws -> ()) async throws {
         let app = try await Application.make(.testing)
         do {
@@ -36,6 +39,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/create", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(createRoomDTO)
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .ok)
                 
@@ -69,6 +75,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/create", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(createRoomDTO)
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .conflict)
                 
@@ -102,6 +111,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .ok)
                 
@@ -135,6 +147,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .notFound)
                 
@@ -157,6 +172,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinRandomPublic", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(JoinRoomDTO(inviteCode: "111111"))
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .notFound)
             })
@@ -189,6 +207,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinByInviteCode", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(joinRoomDTO)
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .ok)
 
@@ -213,6 +234,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinByInviteCode", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(joinRoomDTO)
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .notFound)
                 
@@ -239,6 +263,9 @@ struct RoomControllerTests {
             try await app.test(.POST, "rooms/joinByInviteCode", beforeRequest: { req in
                 req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
                 try req.content.encode(joinRoomDTO)
+                if let apiKey = apiService.readAPIKeyFromEnvFile(app: app) {
+                    req.headers.add(name: "x-api-key", value: apiKey)
+                }
             }, afterResponse: { res async throws in
                 XCTAssertEqual(res.status, .badRequest)
                 
