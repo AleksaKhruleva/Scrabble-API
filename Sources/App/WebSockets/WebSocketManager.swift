@@ -7,20 +7,22 @@ final class WebSocketManager: @unchecked Sendable {
     private var connections: [UUID: [UserConnection]] = [:]
 
     private init() {}
-
-    func removeConnection(for socket: WebSocket, roomID: UUID? = nil) {
-        if let roomID {
-            connections[roomID]?.removeAll { $0.socket === socket }
-            if connections[roomID]?.isEmpty == true {
-                connections.removeValue(forKey: roomID)
+    
+    func handleUserClosedConnection(socket: WebSocket, req: Request) async {
+        guard let connectionRoomID = connections.first(where: { $0.value.contains(where: { $0.socket === socket }) })?.key else {
+            return
+        }
+        do {
+            let room = try await fetchRoom(roomID: connectionRoomID, db: req.db)
+            if room.gameStatus == GameStatus.waiting.rawValue || room.gameStatus == GameStatus.ready.rawValue {
+                await handleLeaveRoom(socket: socket, roomID: connectionRoomID, db: req.db)
+            } else {
+                await handleLeaveGame(socket: socket, roomID: connectionRoomID, db: req.db)
             }
-        } else {
-            for roomID in connections.keys {
-                connections[roomID]?.removeAll { $0.socket === socket }
-                if connections[roomID]?.isEmpty == true {
-                    connections.removeValue(forKey: roomID)
-                }
-            }
+        } catch let error as Abort {
+            sendError(to: [socket], message: error.reason)
+        } catch {
+            sendError(to: [socket], message: error.localizedDescription)
         }
     }
 
@@ -188,14 +190,10 @@ extension WebSocketManager {
                 sendError(to: [socket], message: "Socket is already connected to the room")
                 return
             }
-            guard let userName = try await User.find(userID, on: db)?.username else {
-                sendError(to: [socket], message: "Failed to fetch username for the user ID")
-                return
-            }
-            guard let room = try await Room.query(on: db).with(\.$players).filter(\.$id == roomID).first() else {
-                sendError(to: [socket], message: "Room not found or could not be fetched from the database")
-                return
-            }
+            
+            let userName = try await fetchUsername(for: userID, on: db)
+            let room = try await fetchRoomWithPlayersAndAdmin(roomID: roomID, db: db)
+            
             let isUserInRoom = room.players.contains { $0.$player.id == userID }
             guard isUserInRoom else {
                 sendError(to: [socket], message: "User is not a valid player in this room")
@@ -224,6 +222,8 @@ extension WebSocketManager {
                     outcomingMessage: OutcomingMessage(event: .roomReady)
                 )
             }
+        } catch let error as Abort {
+            sendError(to: [socket], message: error.reason)
         } catch {
             sendError(to: [socket], message: error.localizedDescription)
         }
@@ -943,6 +943,22 @@ extension WebSocketManager {
         connections[roomID, default: []].append(newConnection)
         return newConnection
     }
+    
+    private func removeConnection(for socket: WebSocket, roomID: UUID? = nil) {
+        if let roomID {
+            connections[roomID]?.removeAll { $0.socket === socket }
+            if connections[roomID]?.isEmpty == true {
+                connections.removeValue(forKey: roomID)
+            }
+        } else {
+            for roomID in connections.keys {
+                connections[roomID]?.removeAll { $0.socket === socket }
+                if connections[roomID]?.isEmpty == true {
+                    connections.removeValue(forKey: roomID)
+                }
+            }
+        }
+    }
 
     private func isSocketConnected(to roomID: UUID, socket: WebSocket) -> Bool {
         guard let connections = connections[roomID] else {
@@ -994,7 +1010,15 @@ extension WebSocketManager {
         }
         return room
     }
-
+    
+    func fetchUsername(for userID: UUID, on db: Database) async throws -> String {
+        if let username = try await User.find(userID, on: db)?.username {
+            return username
+        } else {
+            throw Abort(.notFound, reason: "Username not found for the given user ID")
+        }
+    }
+    
     private func validateGameState(_ room: Room, validStates: [String]) throws {
         guard validStates.contains(room.gameStatus) else {
             throw Abort(.badRequest, reason: "Game is not in a valid state for this action")
