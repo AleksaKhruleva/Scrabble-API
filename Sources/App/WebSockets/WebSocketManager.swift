@@ -748,10 +748,7 @@ extension WebSocketManager {
                     playerTiles: playerTiles
                 )
 
-                guard let currentConnection = connections[roomID]?.first(where: { $0.userID == playerID }) else {
-                    // something went wrong
-                    return
-                }
+                guard let currentConnection = connections[roomID]?.first(where: { $0.userID == playerID }) else { return }
                 sendMessage(to: [currentConnection], outcomingMessage: message)
             }
         } catch let error as Abort {
