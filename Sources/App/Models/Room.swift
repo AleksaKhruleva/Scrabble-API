@@ -89,7 +89,7 @@ extension Room {
         self.placedWords = []
         self.currentSkippedTurns = 0
     }
-  
+    
     func toDTO(for userID: UUID) -> RoomDTO {
         let playersInfo: [String: String] = players.reduce(into: [:]) { result, roomPlayer in
             let playerID = roomPlayer.$player.id.uuidString

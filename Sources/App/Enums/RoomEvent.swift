@@ -1,6 +1,8 @@
 import Foundation
 
 enum RoomEvent: String, Codable {
+    case error = "error"
+    
     case joinedRoom = "joined_room"
     case playerJoined = "player_joined"
     

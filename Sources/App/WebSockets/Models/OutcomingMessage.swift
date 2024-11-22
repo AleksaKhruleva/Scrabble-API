@@ -18,6 +18,7 @@ struct OutcomingMessage: Codable {
     let winnerID: UUID?
     let reaction: String?
     let senderID: UUID?
+    let errorMessage: String?
     
     init(
         event: RoomEvent,
@@ -36,7 +37,8 @@ struct OutcomingMessage: Codable {
         newAdminID: UUID? = nil,
         winnerID: UUID? = nil,
         reaction: String? = nil,
-        senderID: UUID? = nil
+        senderID: UUID? = nil,
+        errorMessage: String? = nil
     ) {
         self.event = event
         self.newPlayerInfo = newPlayerInfo
@@ -55,5 +57,6 @@ struct OutcomingMessage: Codable {
         self.winnerID = winnerID
         self.reaction = reaction
         self.senderID = senderID
+        self.errorMessage = errorMessage
     }
 }
