@@ -1,0 +1,12 @@
+included:
+  - Sources/App
+
+identifier_name:
+  excluded:
+    - db
+    - id
+
+cyclomatic_complexity:
+  excluded:
+    - Sources/App/Utils/WebSocketManager.swift
+

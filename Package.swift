@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Scrabble-API",
     platforms: [
-       .macOS(.v13)
+        .macOS(.v13)
     ],
     dependencies: [
         // 💧 A server-side Swift web framework.
@@ -25,6 +25,11 @@ let package = Package(
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
+            ],
+            resources: [
+                .process("Resources/lettersInfo.json"),
+                .process("Resources/boardLayout.json"),
+                .process("Resources/words.txt")
             ],
             swiftSettings: swiftSettings
         ),

@@ -17,7 +17,28 @@ public func configure(_ app: Application) async throws {
         tls: .prefer(try .init(configuration: .clientDefault)))
     ), as: .psql)
 
-    app.migrations.add(CreateTodo())
-    // register routes
+    // MARK: - Generating API-Key
+    let apiKeyService = APIKeyService()
+    let generatedApiKey = apiKeyService.generateAPIKey()
+    apiKeyService.saveAPIKeyToEnvFile(app: app, apiKey: generatedApiKey)
+
+    // MARK: - Setup API-Key
+    let apiKey = Environment.get("API_KEY") ?? generatedApiKey
+    app.logger.info("Loaded API_KEY: \(apiKey)")
+    app.middleware.use(APIKeyMiddleware(apiKey: apiKey))
+
+    // MARK: - Setup Services
+    let userService: UserServiceProtocol = UserService(db: app.db)
+    app.register(userService)
+
+    // MARK: - Setup Migrations
+    app.migrations.add(CreateUserMigration())
+    app.migrations.add(CreateRoomMigration())
+    app.migrations.add(CreateRoomPlayerMigration())
+    app.migrations.add(CreateTokenMigration())
+    app.migrations.add(CreateWordMigration())
+    try await app.autoMigrate().get()
+
+    // MARK: - Register routes
     try routes(app)
 }
