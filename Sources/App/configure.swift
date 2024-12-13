@@ -23,9 +23,10 @@ public func configure(_ app: Application) async throws {
     apiKeyService.saveAPIKeyToEnvFile(app: app, apiKey: generatedApiKey)
 
     // MARK: - Setup API-Key
-    let apiKey = Environment.get("API_KEY") ?? generatedApiKey
-    app.logger.info("Loaded API_KEY: \(apiKey)")
-    app.middleware.use(APIKeyMiddleware(apiKey: apiKey))
+    // FIXME: - Develop new API-Key functionality
+    // let apiKey = Environment.get("API_KEY") ?? generatedApiKey
+    // app.logger.info("Loaded API_KEY: \(apiKey)")
+    // app.middleware.use(APIKeyMiddleware(apiKey: apiKey))
 
     // MARK: - Setup Services
     let userService: UserServiceProtocol = UserService(db: app.db)
