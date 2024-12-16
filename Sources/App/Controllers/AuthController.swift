@@ -16,6 +16,9 @@ struct AuthController: RouteCollection {
         // MARK: - Middleware
         let basicAuthMiddleware = User.authenticator()
         let basicAuthGroup = users.grouped(basicAuthMiddleware)
+        
+        let tokenAuthMiddleware = Token.authenticator()
+        let tokenAuthGroup = users.grouped(tokenAuthMiddleware)
 
         // MARK: - Login route
         // Usage:
@@ -31,6 +34,8 @@ struct AuthController: RouteCollection {
         ///     },
         /// "value": {token-value}
         basicAuthGroup.post("login", use: login)
+        
+        tokenAuthGroup.post("logout", use: logout)
     }
 
     @Sendable
@@ -81,6 +86,19 @@ struct AuthController: RouteCollection {
         } catch {
             throw ErrorService.shared.handleError(error)
         }
+    }
+    
+    @Sendable
+    func logout(_ req: Request) async throws -> HTTPStatus {
+        let token = try req.auth.require(Token.self)
+        
+        do {
+            try await token.delete(on: req.db)
+        } catch {
+            throw ErrorService.shared.handleError(error)
+        }
+        
+        return .ok
     }
 }
 // swiftlint:enable orphaned_doc_comment
