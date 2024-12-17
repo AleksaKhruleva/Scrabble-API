@@ -108,4 +108,15 @@ extension Room {
             maxPlayers: maxPlayers
         )
     }
+    
+    func toListElementDTO() -> RoomListElementDTO {
+        return RoomListElementDTO(
+            id: id,
+            inviteCode: inviteCode,
+            adminID: $admin.id,
+            gameStatus: gameStatus,
+            timePerTurn: timePerTurn,
+            maxPlayers: maxPlayers
+        )
+    }
 }

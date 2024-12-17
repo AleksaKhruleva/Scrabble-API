@@ -14,6 +14,7 @@ struct RoomController: RouteCollection {
         tokenAuthGroup.post("create", use: create)
         tokenAuthGroup.post("joinRandomPublic", use: joinRandomPublic)
         tokenAuthGroup.post("joinByInviteCode", use: joinByInviteCode)
+        tokenAuthGroup.get("getPublic", use: getPublicRooms)
     }
 
     @Sendable
@@ -50,6 +51,15 @@ struct RoomController: RouteCollection {
             throw Abort(.internalServerError, reason: "An error occurred while joining the room")
         }
         return room.toDTO(for: userID)
+    }
+    
+    @Sendable
+    func getPublicRooms(req: Request) async throws -> [RoomListElementDTO] {
+        let rooms = try await Room.query(on: req.db)
+            .filter("is_private", .equal, false)
+            .all()
+        
+        return rooms.map { $0.toListElementDTO() }
     }
 }
 

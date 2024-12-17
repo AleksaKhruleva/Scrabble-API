@@ -21,6 +21,7 @@ struct UsersController: RouteCollection {
         // Response:
         /// { user }
         tokenAuthGroup.put(use: update)
+        tokenAuthGroup.post("delete", use: delete)
     }
 
     @Sendable
@@ -53,6 +54,30 @@ struct UsersController: RouteCollection {
 
         try await updatedUser.update(on: req.db)
         return updatedUser.convertToPublic()
+    }
+    
+    @Sendable
+    func delete(req: Request) async throws -> HTTPStatus {
+        let userService = UserService(db: req.db)
+        let userID = try await userService.fetchUserID(req: req)
+        
+        guard let user = try await User.find(userID, on: req.db) else {
+            throw Abort(.notFound, reason: "User not found")
+        }
+        
+        do {
+            try await req.db.transaction { db in
+                try await user.delete(on: db)
+                
+                try await Token.query(on: db)
+                    .filter("user_id", .equal, userID)
+                    .delete()
+            }
+        } catch {
+            throw ErrorService.shared.handleError(error)
+        }
+        
+        return .ok
     }
 }
 // swiftlint:enable orphaned_doc_comment
