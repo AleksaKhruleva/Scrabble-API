@@ -150,4 +150,27 @@ struct AuthControllerTests {
             })
         }
     }
+    
+    @Test("User logout with valid token")
+    func test_logout_withValidToken_shouldDeleteToken() async throws {
+        let user = User(username: "testuser", email: "test@example.com", password: try Bcrypt.hash("password123"))
+        
+        try await withApp { app in
+            try await user.save(on: app.db)
+            
+            let token = Token(value: UUID().uuidString, userID: try user.requireID())
+            try await token.save(on: app.db)
+            
+            try await app.test(.POST, "api/v1/auth/logout", beforeRequest: { req in
+                req.headers.bearerAuthorization = BearerAuthorization(token: token.value)
+            }, afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                
+                let tokenInDB = try await Token.query(on: app.db)
+                    .filter(\.$value == token.value)
+                    .first()
+                #expect(tokenInDB == nil)
+            })
+        }
+    }
 }
